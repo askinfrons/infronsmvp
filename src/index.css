@@ -1,0 +1,66 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;1,14..32,400&display=swap');
+
+:root {
+  /* Brand */
+  --brand-dark:       #0f0f1a;
+  --brand-navy:       #1a1a3e;
+  --brand-indigo:     #3730a3;
+  --accent:           #6366f1;
+  --accent-hover:     #4f46e5;
+  --accent-light:     #eef2ff;
+  --accent-mid:       #c7d2fe;
+
+  /* Status */
+  --success:          #10B981;
+  --success-light:    #ECFDF5;
+  --warning:          #F59E0B;
+  --warning-light:    #FFFBEB;
+  --danger:           #EF4444;
+  --danger-light:     #FEF2F2;
+
+  /* Page surfaces */
+  --bg-page:          #f5f5fb;
+  --bg-surface:       #FFFFFF;
+  --bg-subtle:        #F9FAFB;
+  --border:           #e5e7eb;
+  --border-subtle:    #f3f4f6;
+
+  /* Text */
+  --text-primary:     #111827;
+  --text-secondary:   #6B7280;
+  --text-muted:       #9CA3AF;
+
+  /* Sidebar — light */
+  --sidebar-bg:       #FFFFFF;
+  --sidebar-border:   #e5e7eb;
+  --sidebar-text:     #6B7280;
+  --sidebar-active-bg: #eef2ff;
+  --sidebar-active-text: #4f46e5;
+  --sidebar-hover-bg: #f5f5fb;
+  --sidebar-section:  #9CA3AF;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button, a, input, select, textarea { transition: all 150ms ease; }
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #9CA3AF; }
+
+@keyframes spin   { to { transform: rotate(360deg); } }
+@keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+@keyframes slideIn { from { opacity:0; transform:translateY(-6px) scale(0.98); } to { opacity:1; transform:translateY(0) scale(1); } }
