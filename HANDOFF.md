@@ -28,6 +28,24 @@ Build INFRONS — a client communication web app for CA (Chartered Accountant) p
 
 ## Features Built
 
+### Editable Practice Details & Login Email - 2026-06-14
+- `src/Settings.jsx`
+  - Practice name and practice contact email are now editable via an "Edit" button on the Practice details card.
+  - Edit is principal-only (matches `practice_rls_policies.sql`, which only allows `id = auth.uid()` updates). Staff see a read-only card plus a note that only the principal can edit.
+  - Added a separate "Account login email" card, editable by any user via `supabase.auth.updateUser({ email })`. Shows a confirmation-link notice since Supabase requires email verification before the login email changes.
+  - No existing routes, layout, or other settings behavior changed.
+- No SQL changes required — existing `practice_rls_policies.sql` update policy already covers this.
+
+### Notes RLS Insert Fix - 2026-06-14
+- **Issue**: Adding an internal note failed with `new row violates row-level security policy for table "notes"`.
+- **Cause**: `notes` table had RLS enabled but no INSERT (or SELECT/UPDATE/DELETE) policy.
+- **Fix**: Added `notes_rls_policies.sql` (new file) with:
+  - SELECT: practice members can view notes for clients in their practice (staff limited to clients assigned to them)
+  - INSERT: practice members can insert notes for those same clients, only as themselves (`user_id = auth.uid()`)
+  - UPDATE/DELETE: only the note author can edit/delete their own note
+- **Action required**: Run `notes_rls_policies.sql` in the Supabase SQL editor.
+- No frontend changes needed — `Notes.jsx` already sends `user_id: currentUser.id` on insert; existing edit/delete-own-note UI behavior is preserved by the new policies.
+
 ### CSV Bulk Client Import - 2026-06-03
 - Installed `papaparse` for secure client-side CSV parsing.
 - Added "Import CSV" button next to "+ Add Client" in Dashboard.
@@ -267,7 +285,7 @@ Build INFRONS — a client communication web app for CA (Chartered Accountant) p
    - users (practice-scoped access)
    - clients (practice-scoped CRUD)
    - messages (practice-scoped via client relationship)
-   - notes (practice-scoped via client relationship)
+   - notes (practice-scoped via client relationship; see `notes_rls_policies.sql` — must be run for note creation to work)
 
 ### What's NOT Built Yet
 - Automated email notifications for new messages and follow-up reminders
@@ -297,6 +315,12 @@ Build INFRONS — a client communication web app for CA (Chartered Accountant) p
 - `.env` — Supabase credentials
 - `vercel.json` — SPA routing config
 
+### Database/RLS Files
+- `trigger_last_client_reply.sql`
+- `storage_setup.sql`
+- `practice_rls_policies.sql`
+- `notes_rls_policies.sql` — run to fix notes insert RLS error
+
 ## Issues Encountered & Solutions
 
 ### 1. Tailwind CSS PostCSS Plugin Error ❌ → ✅
@@ -319,16 +343,16 @@ Build INFRONS — a client communication web app for CA (Chartered Accountant) p
 - Now gracefully handles legacy accounts
 
 ### 3. Row-Level Security Blocking Inserts ❌ → ✅
-**Error**: "new row violates row-level security policy for table 'practices'"
+**Error**: "new row violates row-level security policy for table 'practices'" / "...for table 'notes'"
 
 **Cause**: RLS was enabled but no policies existed to allow authenticated users to insert their own records
 
 **Solution**: Created comprehensive RLS policies via SQL:
-- practices: users can insert/view/update their own practice (WHERE auth.uid() = id)
+- practices: users can insert/view/update their own practice (WHERE auth.uid() = id) — `practice_rls_policies.sql`
 - users: users can insert their own profile, view practice team members
 - clients: practice-scoped CRUD (WHERE practice_id = auth.uid())
 - messages: practice-scoped via client foreign key relationship
-- notes: practice-scoped via client foreign key, user can only update/delete their own
+- notes: practice-scoped via client foreign key, user can only update/delete their own — `notes_rls_policies.sql`
 
 ### 4. Status Colors Not Showing ⚠️ (Expected Behavior)
 **Issue**: All clients show red dots after creation
@@ -375,15 +399,18 @@ Build INFRONS — a client communication web app for CA (Chartered Accountant) p
 
 ## Next Steps (Priority Order)
 
-1. **Test Staff Invite Flow End-to-End**
+1. **Run `notes_rls_policies.sql` in Supabase**
+   - Required to fix the notes insert RLS error.
+
+2. **Test Staff Invite Flow End-to-End**
    - Add `RESEND_API_KEY` to local `.env` and Vercel
    - Use `vercel dev` or deployed Vercel app to test `/api/send-invite`
    - Confirm staff signup can insert a `users` row under the invited practice
 
-2. **Email Notifications**
+3. **Email Notifications**
    - Send emails when a new message is received or follow-up is due
 
-3. **Production Email Setup**
+4. **Production Email Setup**
    - Add and verify a real sending domain in Resend
    - Replace `onboarding@resend.dev` sender after domain verification
 
@@ -425,6 +452,8 @@ vite.config.js
 vercel.json
 index.html
 README.md
+practice_rls_policies.sql
+notes_rls_policies.sql
 src/
   index.css
   main.jsx
@@ -473,7 +502,7 @@ const getStatusColor = (lastReply) => {
 - User is Anshul, prefers brief explanations with no filler
 - Keep responses professional and to the point
 - Status colors are working correctly (waiting for message data)
-- RLS policies are fully configured and tested
+- RLS policies are fully configured and tested — except notes, run `notes_rls_policies.sql`
 - Auto-practice-creation handles legacy accounts gracefully
 - `src/` files are flat, not inside `src/pages/`
 - Use `npm.cmd run build` in PowerShell if `npm run build` is blocked by execution policy
