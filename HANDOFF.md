@@ -28,6 +28,13 @@ Build INFRONS — a client communication web app for CA (Chartered Accountant) p
 
 ## Features Built
 
+### Practice Update Silent RLS Failure Fix - 2026-06-16
+- **Issue**: Editing practice name/email in Settings showed a success message, but changes reverted on page refresh.
+- **Cause**: `practices` table has RLS enabled. `practice_rls_policies.sql` (containing the UPDATE policy) had not been run in Supabase. Without it, `supabase.from('practices').update(...)` matches 0 rows and Supabase does not throw an error for that — it just returns no data, so the old code optimistically updated local state and showed "success" even though nothing was written.
+- **Fix**: `src/Settings.jsx` `handleSavePractice` now calls `.select()` after `.update()` and checks the returned rows. If 0 rows come back, it shows an explicit error instead of falsely reporting success, and only updates local state from the data actually returned by Supabase.
+- **Action required**: Run `practice_rls_policies.sql` in the Supabase SQL editor — this is the real fix; without the UPDATE policy, saves will continue to fail (now loudly instead of silently).
+- No other Settings.jsx behavior changed (account login email edit was unaffected — it uses `auth.updateUser`, a separate path not subject to `practices` RLS).
+
 ### Reminder Notifications - 2026-06-15
 - `src/Dashboard.jsx`
   - Added a `Toast` component: a bottom-right confirmation that appears immediately after scheduling a follow-up, stating client name and follow-up date (e.g. "Reminder set for Rajesh Kumar — follow-up on 18 Jun 2026."). Auto-dismisses after 4s or via close button.

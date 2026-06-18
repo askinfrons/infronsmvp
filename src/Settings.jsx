@@ -143,19 +143,27 @@ export default function Settings() {
     }
 
     setSavingPractice(true)
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('practices')
       .update({ name, email: email || null })
       .eq('id', practice.id)
+      .select('id, name, email')
     setSavingPractice(false)
 
     if (error) {
       setPracticeError(error.message)
-    } else {
-      setPractice((prev) => ({ ...prev, name, email }))
-      setEditingPractice(false)
-      setPracticeSuccess('Practice details updated.')
+      return
     }
+
+    if (!data || data.length === 0) {
+      // Update matched 0 rows — RLS blocked it silently (no UPDATE policy).
+      setPracticeError('Update was not saved. Your account may not have permission to edit practice details (RLS policy missing or not applied).')
+      return
+    }
+
+    setPractice((prev) => ({ ...prev, name: data[0].name, email: data[0].email }))
+    setEditingPractice(false)
+    setPracticeSuccess('Practice details updated.')
   }
 
   const startEditEmail = () => {
