@@ -28,6 +28,13 @@ Build INFRONS — a client communication web app for CA (Chartered Accountant) p
 
 ## Features Built
 
+### Reminder Notifications - 2026-06-15
+- `src/Dashboard.jsx`
+  - Added a `Toast` component: a bottom-right confirmation that appears immediately after scheduling a follow-up, stating client name and follow-up date (e.g. "Reminder set for Rajesh Kumar — follow-up on 18 Jun 2026."). Auto-dismisses after 4s or via close button.
+  - Added an "Upcoming follow-ups" banner (blue) showing follow-ups due in the next 7 days, separate from the existing yellow "due today/overdue" banner. Collapsible list shows each client name, company, and date; clicking a row opens the existing reminder modal pre-filled with that client.
+  - Existing due-today banner, "Follow-ups Due" filter/button, and reminder modal are unchanged.
+- No DB/schema changes — uses existing `follow_up_date` column.
+
 ### Editable Practice Details & Login Email - 2026-06-14
 - `src/Settings.jsx`
   - Practice name and practice contact email are now editable via an "Edit" button on the Practice details card.

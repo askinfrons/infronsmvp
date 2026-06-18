@@ -233,6 +233,41 @@ function StatCard({ label, value, color, bg, icon, clickable, active, onClick })
   )
 }
 
+// ─── Toast notification ─────────────────────────────────────────────────────────
+function Toast({ message, onClose }) {
+  useEffect(() => {
+    const timer = setTimeout(onClose, 4000)
+    return () => clearTimeout(timer)
+  }, [onClose])
+
+  return (
+    <div style={{
+      position: 'fixed', bottom: '28px', right: '28px', zIndex: 60,
+      background: '#111827', color: '#FFFFFF',
+      borderRadius: '12px', padding: '14px 18px',
+      boxShadow: '0 12px 32px rgba(0,0,0,0.28)',
+      display: 'flex', alignItems: 'center', gap: '12px',
+      maxWidth: '360px', animation: 'slideIn 0.2s ease',
+    }}>
+      <span style={{
+        width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0,
+        background: 'rgba(99,102,241,0.25)', color: '#a5b4fc',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <IC.Calendar />
+      </span>
+      <p style={{ fontSize: '13.5px', lineHeight: 1.45, flex: 1 }}>{message}</p>
+      <button
+        onClick={onClose}
+        style={{
+          background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)',
+          cursor: 'pointer', fontSize: '16px', lineHeight: 1, padding: 0, flexShrink: 0,
+        }}
+      >×</button>
+    </div>
+  )
+}
+
 // ─── Avatar color palette ──────────────────────────────────────────────────────
 const AVATAR_COLORS = [
   '#6366f1', '#7C3AED', '#EC4899', '#14B8A6',
@@ -240,6 +275,12 @@ const AVATAR_COLORS = [
 ]
 const getAvatarColor = (name) => AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length]
 const CLIENT_PAGE_SIZE = 50
+const UPCOMING_WINDOW_DAYS = 7
+
+const formatFollowUpDate = (dateStr) => {
+  const d = new Date(`${dateStr}T00:00:00`)
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+}
 
 // ─── Main Dashboard ────────────────────────────────────────────────────────────
 export default function Dashboard() {
@@ -271,6 +312,8 @@ export default function Dashboard() {
   const [isImporting, setIsImporting] = useState(false)
   const [importSuccessMessage, setImportSuccessMessage] = useState('')
   const [dragActive, setDragActive] = useState(false)
+  const [toast, setToast] = useState(null)
+  const [showUpcomingPanel, setShowUpcomingPanel] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => { checkAuth() }, [])
@@ -557,10 +600,17 @@ export default function Dashboard() {
     setSaving(true)
     const { error } = await supabase.from('clients').update({ follow_up_date: followUpDate || null }).eq('id', followUpClient.id)
     setSaving(false)
-    if (error) { setError(error.message) } else {
+    if (error) {
+      setError(error.message)
+    } else {
+      const clientName = followUpClient.name
+      const dateForToast = followUpDate
       setFollowUpClient(null)
       setFollowUpDate('')
       fetchClients()
+      if (dateForToast) {
+        setToast(`Reminder set for ${clientName} — follow-up on ${formatFollowUpDate(dateForToast)}.`)
+      }
     }
   }
 
@@ -594,6 +644,7 @@ export default function Dashboard() {
   }
 
   const today = new Date().toISOString().split('T')[0]
+  const upcomingWindowEnd = new Date(Date.now() + UPCOMING_WINDOW_DAYS * 86400000).toISOString().split('T')[0]
 
   // Computed stats
   const activeCount = clients.filter(c => {
@@ -606,6 +657,11 @@ export default function Dashboard() {
   ).length
 
   const dueFollowUps = clients.filter(c => c.follow_up_date && c.follow_up_date <= today)
+
+  // Upcoming (future, within window) follow-ups — distinct from due-today/overdue
+  const upcomingFollowUps = clients
+    .filter(c => c.follow_up_date && c.follow_up_date > today && c.follow_up_date <= upcomingWindowEnd)
+    .sort((a, b) => a.follow_up_date.localeCompare(b.follow_up_date))
 
   // Filtered clients — search, attention filter, and follow-up filter all work together
   const displayedClients = clients.filter(c => {
@@ -882,7 +938,7 @@ export default function Dashboard() {
                   onClick={() => { setFilterFollowUp(true); setFilterAttention(false) }}
                   style={{
                     background: '#FEF9C3', border: '1px solid #FEF08A', borderRadius: '10px',
-                    padding: '12px 16px', marginBottom: '20px',
+                    padding: '12px 16px', marginBottom: '12px',
                     display: 'flex', gap: '10px', alignItems: 'center',
                     cursor: 'pointer',
                   }}
@@ -894,6 +950,57 @@ export default function Dashboard() {
                       : `${dueFollowUps.length} clients have follow-ups due today`}
                   </p>
                   <span style={{ color: '#A16207', fontSize: '12px', fontWeight: 600 }}>View →</span>
+                </div>
+              )}
+
+              {/* Upcoming follow-ups banner — next 7 days, excludes due-today/overdue */}
+              {upcomingFollowUps.length > 0 && (
+                <div style={{
+                  background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '10px',
+                  marginBottom: '20px', overflow: 'hidden',
+                }}>
+                  <div
+                    onClick={() => setShowUpcomingPanel(!showUpcomingPanel)}
+                    style={{
+                      padding: '12px 16px', display: 'flex', gap: '10px', alignItems: 'center',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <span style={{ fontSize: '15px' }}>🔔</span>
+                    <p style={{ color: '#1D4ED8', fontSize: '13.5px', fontWeight: 500, flex: 1 }}>
+                      {upcomingFollowUps.length === 1
+                        ? `${upcomingFollowUps[0].name} — follow-up on ${formatFollowUpDate(upcomingFollowUps[0].follow_up_date)}`
+                        : `${upcomingFollowUps.length} upcoming follow-ups in the next ${UPCOMING_WINDOW_DAYS} days`}
+                    </p>
+                    <span style={{ color: '#1D4ED8', fontSize: '12px', fontWeight: 600 }}>
+                      {showUpcomingPanel ? 'Hide ↑' : 'View ↓'}
+                    </span>
+                  </div>
+                  {showUpcomingPanel && (
+                    <div style={{ borderTop: '1px solid #BFDBFE', background: '#FFFFFF' }}>
+                      {upcomingFollowUps.map((c, i) => (
+                        <div
+                          key={c.id}
+                          onClick={() => { setFollowUpClient(c); setFollowUpDate(c.follow_up_date || '') }}
+                          style={{
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            padding: '10px 16px', cursor: 'pointer',
+                            borderBottom: i < upcomingFollowUps.length - 1 ? '1px solid #F3F4F6' : 'none',
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = '#F9FAFB')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = '#FFFFFF')}
+                        >
+                          <div>
+                            <span style={{ fontSize: '13.5px', fontWeight: 600, color: '#111827' }}>{c.name}</span>
+                            {c.company && <span style={{ fontSize: '12px', color: '#9CA3AF', marginLeft: '6px' }}>{c.company}</span>}
+                          </div>
+                          <span style={{ fontSize: '12.5px', color: '#1D4ED8', fontWeight: 600 }}>
+                            {formatFollowUpDate(c.follow_up_date)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1171,6 +1278,9 @@ export default function Dashboard() {
           </main>
         </div>
       </div>
+
+      {/* ── Toast ── */}
+      {toast && <Toast message={toast} onClose={() => setToast(null)} />}
 
       {/* ── Modals ── */}
       {showAddModal && (
