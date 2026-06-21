@@ -28,6 +28,19 @@ Build INFRONS — a client communication web app for CA (Chartered Accountant) p
 
 ## Features Built
 
+### Practice/User Data Integrity Fix - 2026-06-18
+- **Issue**: Editing practice details in Settings showed success but reverted immediately, even before refresh.
+- **Root cause (deeper than the RLS policy gap fixed on 2026-06-16)**: for the live account in question, `users.practice_id` did not equal `users.id`. RLS update policy on `practices` requires `id = auth.uid()`, so the UPDATE matched zero rows — Settings was editing a practice the account didn't actually own under that policy. This stemmed from legacy auto-creation logic across multiple sessions creating inconsistent `practice_id` values; client records had also split across two different `practice_id`s for the same user (2 clients under each), meaning half the client list was invisible on the dashboard.
+- **Diagnosis steps**: queried `practices`, `users`, and `clients` (grouped by `practice_id`) directly in Supabase to confirm the mismatch and locate where each client actually lived.
+- **Fix**: `fix_anshul_practice_merge.sql` (new file, account-specific one-time migration)
+  - Creates/updates a `practices` row with `id` matching the user's own `auth.uid()`.
+  - Re-points the 2 clients that were stuck under the mismatched `practice_id` to the user's own practice id (no deletes — purely additive/repointing).
+  - Updates `users.practice_id` to match `users.id`.
+  - Leaves the old orphaned practice row in place (commented-out delete included for later manual cleanup if desired).
+  - Hit a unique constraint collision on `practices.email` during first run (the orphaned row already held a placeholder email) — fixed by using the user's real email directly instead of copying the old row's email.
+- **Verified**: `users.id = users.practice_id` after migration; Settings save now persists correctly.
+- **Action for future legacy accounts with the same symptom**: re-run the same diagnostic query pattern (`practices` list, `users` list, `clients` grouped by `practice_id`) before assuming it's just the RLS policy gap — confirm `users.practice_id = users.id` first.
+
 ### Practice Update Silent RLS Failure Fix - 2026-06-16
 - **Issue**: Editing practice name/email in Settings showed a success message, but changes reverted on page refresh.
 - **Cause**: `practices` table has RLS enabled. `practice_rls_policies.sql` (containing the UPDATE policy) had not been run in Supabase. Without it, `supabase.from('practices').update(...)` matches 0 rows and Supabase does not throw an error for that — it just returns no data, so the old code optimistically updated local state and showed "success" even though nothing was written.
@@ -413,18 +426,15 @@ Build INFRONS — a client communication web app for CA (Chartered Accountant) p
 
 ## Next Steps (Priority Order)
 
-1. **Run `notes_rls_policies.sql` in Supabase**
-   - Required to fix the notes insert RLS error.
-
-2. **Test Staff Invite Flow End-to-End**
+1. **Test Staff Invite Flow End-to-End**
    - Add `RESEND_API_KEY` to local `.env` and Vercel
    - Use `vercel dev` or deployed Vercel app to test `/api/send-invite`
    - Confirm staff signup can insert a `users` row under the invited practice
 
-3. **Email Notifications**
+2. **Email Notifications**
    - Send emails when a new message is received or follow-up is due
 
-4. **Production Email Setup**
+3. **Production Email Setup**
    - Add and verify a real sending domain in Resend
    - Replace `onboarding@resend.dev` sender after domain verification
 
@@ -516,7 +526,8 @@ const getStatusColor = (lastReply) => {
 - User is Anshul, prefers brief explanations with no filler
 - Keep responses professional and to the point
 - Status colors are working correctly (waiting for message data)
-- RLS policies are fully configured and tested — except notes, run `notes_rls_policies.sql`
+- RLS policies are fully configured and tested — `notes_rls_policies.sql` and `practice_rls_policies.sql` have both been applied
+- Legacy `practice_id`/`users.id` mismatches have caused real production incidents (split client data, silent Settings save failures) — see "Practice/User Data Integrity Fix" entry above. If a similar symptom appears for another account, run the same diagnostic queries before assuming it's a missing RLS policy
 - Auto-practice-creation handles legacy accounts gracefully
 - `src/` files are flat, not inside `src/pages/`
 - Use `npm.cmd run build` in PowerShell if `npm run build` is blocked by execution policy
