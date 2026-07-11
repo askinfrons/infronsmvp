@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from './supabaseClient'
 import Papa from 'papaparse'
+import { formatRelativeTime } from './activityTracker'
 
 import Sidebar, { IC } from './Sidebar'
 
@@ -364,15 +365,33 @@ export default function Dashboard() {
       const start = append ? clients.length : 0
       const end = start + CLIENT_PAGE_SIZE - 1
 
+      const clientColumns = 'id, practice_id, assigned_to, name, company, phone, portal_token, last_client_reply, follow_up_date, portal_last_opened, last_activity_at, created_at'
+      const fallbackClientColumns = 'id, practice_id, assigned_to, name, company, phone, portal_token, last_client_reply, follow_up_date, created_at'
+
       let query = supabase
         .from('clients')
-        .select('id, practice_id, assigned_to, name, company, phone, portal_token, last_client_reply, follow_up_date, created_at')
+        .select(clientColumns)
         .eq('practice_id', pid)
       if (role === 'staff') query = query.eq('assigned_to', user.id)
 
-      const { data, error } = await query
+      let { data, error } = await query
         .order('last_client_reply', { ascending: true, nullsFirst: true })
         .range(start, end)
+
+      if (error?.message?.includes('column')) {
+        let fallbackQuery = supabase
+          .from('clients')
+          .select(fallbackClientColumns)
+          .eq('practice_id', pid)
+        if (role === 'staff') fallbackQuery = fallbackQuery.eq('assigned_to', user.id)
+
+        const fallback = await fallbackQuery
+          .order('last_client_reply', { ascending: true, nullsFirst: true })
+          .range(start, end)
+        data = fallback.data
+        error = fallback.error
+      }
+
       if (error) throw error
       setClients(prev => append ? [...prev, ...(data || [])] : (data || []))
       setHasMoreClients((data || []).length === CLIENT_PAGE_SIZE)
@@ -1181,6 +1200,9 @@ export default function Dashboard() {
                                 {client.company}
                               </p>
                             )}
+                            <p style={{ fontSize: '11.5px', color: '#6B7280', marginTop: '3px', fontWeight: 500 }}>
+                              Last active: {formatRelativeTime(client.last_activity_at || client.portal_last_opened || client.last_client_reply)}
+                            </p>
                             {userRole === 'principal' && client.assigned_to && (
                               <p style={{ fontSize: '11.5px', color: '#6366f1', marginTop: '3px', fontWeight: 500 }}>
                                 Assigned to {getAssignedName(client.assigned_to) || 'Staff member'}

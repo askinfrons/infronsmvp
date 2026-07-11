@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from './supabaseClient'
+import { markClientMessagesSeen, recordFileDownload, recordPortalOpen } from './activityTracker'
 
 export default function ClientPortal() {
   const { token } = useParams()
@@ -30,6 +31,10 @@ export default function ClientPortal() {
           if (payload.eventType === 'INSERT') {
             setMessages(prev => [...prev, payload.new])
             scrollToBottom()
+          } else if (payload.eventType === 'UPDATE') {
+            setMessages(prev => prev.map(message => (
+              message.id === payload.new.id ? payload.new : message
+            )))
           }
         }
       ).subscribe()
@@ -44,12 +49,14 @@ export default function ClientPortal() {
       setError('')
       const { data, error } = await supabase
         .from('clients')
-        .select('id, name, company, portal_token, practices(name)')
+        .select('id, practice_id, name, company, portal_token, practices(name)')
         .eq('portal_token', token)
         .single()
       if (error) throw error
       setClient(data)
       setPractice(data.practices)
+      recordPortalOpen(token)
+      markClientMessagesSeen(data.id)
     } catch {
       setError('Invalid or expired link')
     } finally {
@@ -59,11 +66,20 @@ export default function ClientPortal() {
 
   const fetchMessages = async () => {
     try {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('messages')
-        .select('id, client_id, sender, content, file_url, file_name, is_read, created_at')
+        .select('id, client_id, sender, content, file_url, file_name, is_read, delivered_at, seen_at, file_downloaded_at, created_at')
         .eq('client_id', client.id)
         .order('created_at', { ascending: true })
+      if (error?.message?.includes('column')) {
+        const fallback = await supabase
+          .from('messages')
+          .select('id, client_id, sender, content, file_url, file_name, is_read, created_at')
+          .eq('client_id', client.id)
+          .order('created_at', { ascending: true })
+        data = fallback.data
+        error = fallback.error
+      }
       if (error) throw error
       setMessages(data || [])
     } catch (err) { setError(err.message) }
@@ -239,6 +255,7 @@ export default function ClientPortal() {
                       href={msg.file_url}
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={() => recordFileDownload(msg.id)}
                       style={{
                         display: 'block', marginTop: '8px', fontSize: '13px',
                         color: isClient ? 'rgba(255,255,255,0.85)' : 'var(--accent)',

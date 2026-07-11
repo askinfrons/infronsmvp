@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from './supabaseClient'
 import Sidebar from './Sidebar'
+import { recordFileDownload } from './activityTracker'
 
 export default function Messages() {
   const { id } = useParams()
@@ -27,6 +28,10 @@ export default function Messages() {
           if (payload.eventType === 'INSERT') {
             setMessages(prev => [...prev, payload.new])
             scrollToBottom()
+          } else if (payload.eventType === 'UPDATE') {
+            setMessages(prev => prev.map(message => (
+              message.id === payload.new.id ? payload.new : message
+            )))
           }
         }
       )
@@ -77,11 +82,20 @@ export default function Messages() {
   const fetchMessages = async () => {
     try {
       setError('')
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('messages')
-        .select('id, client_id, sender, content, file_url, file_name, is_read, created_at')
+        .select('id, client_id, sender, content, file_url, file_name, is_read, delivered_at, seen_at, file_downloaded_at, created_at')
         .eq('client_id', id)
         .order('created_at', { ascending: true })
+      if (error?.message?.includes('column')) {
+        const fallback = await supabase
+          .from('messages')
+          .select('id, client_id, sender, content, file_url, file_name, is_read, created_at')
+          .eq('client_id', id)
+          .order('created_at', { ascending: true })
+        data = fallback.data
+        error = fallback.error
+      }
       if (error) throw error
       setMessages(data || [])
     } catch (err) { setError(err.message) }
@@ -112,7 +126,7 @@ export default function Messages() {
       const { error } = await supabase.from('messages').insert([{
         client_id: id, sender: 'ca',
         content: newMessage.trim() || '📎 File attached',
-        file_url: fileUrl, file_name: fileName, is_read: true
+        file_url: fileUrl, file_name: fileName, is_read: false
       }])
       if (error) throw error
       setNewMessage('')
@@ -138,6 +152,12 @@ export default function Messages() {
   const formatTime = (ts) => new Date(ts).toLocaleString('en-IN', {
     hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short'
   })
+
+  const getMessageReceipt = (msg) => {
+    if (msg.seen_at || msg.is_read) return { label: 'Seen', marks: 2, color: '#93C5FD' }
+    if (msg.delivered_at || msg.created_at) return { label: 'Delivered', marks: 2, color: 'rgba(255,255,255,0.72)' }
+    return { label: 'Sent', marks: 1, color: 'rgba(255,255,255,0.58)' }
+  }
 
   if (loading) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-page)' }}>
@@ -206,6 +226,7 @@ export default function Messages() {
                         href={msg.file_url}
                         target="_blank"
                         rel="noopener noreferrer"
+                        onClick={() => recordFileDownload(msg.id)}
                         style={{
                           display: 'block', marginTop: '8px', fontSize: '13px',
                           color: isCA ? 'rgba(255,255,255,0.85)' : 'var(--accent)',
@@ -215,13 +236,23 @@ export default function Messages() {
                         📎 {msg.file_name || 'Download attachment'}
                       </a>
                     )}
-                    <p style={{
+                    <div style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px',
                       fontSize: '11px', marginTop: '6px',
                       color: isCA ? 'rgba(255,255,255,0.6)' : 'var(--text-muted)',
-                      textAlign: 'right',
                     }}>
-                      {formatTime(msg.created_at)}
-                    </p>
+                      <span>{formatTime(msg.created_at)}</span>
+                      {isCA && (() => {
+                        const receipt = getMessageReceipt(msg)
+                        return (
+                          <span title={receipt.label} aria-label={receipt.label} style={{
+                            color: receipt.color, letterSpacing: '-2px', fontWeight: 700, minWidth: '14px',
+                          }}>
+                            {receipt.marks === 2 ? <>&#10003;&#10003;</> : <>&#10003;</>}
+                          </span>
+                        )
+                      })()}
+                    </div>
                   </div>
                 </div>
               )

@@ -12,6 +12,48 @@ const brand = {
   red: '#ef4444',
 }
 
+const pricingPlans = [
+  {
+    name: 'Starter',
+    price: '₹999',
+    gst: '₹180 GST',
+    total: '₹1,179/mo',
+    target: 'Solo CA',
+    clients: '5 clients',
+    users: '1 user',
+    storage: '1GB storage',
+    cta: 'Get set up',
+    href: '/signup',
+    featured: false,
+  },
+  {
+    name: 'Pro',
+    price: '₹2,000',
+    gst: '₹360 GST',
+    total: '₹2,360/mo',
+    target: 'CA firm / CFO',
+    clients: '50 clients',
+    users: '5 users',
+    storage: '15GB storage',
+    cta: 'Get set up',
+    href: '/signup',
+    featured: true,
+  },
+  {
+    name: 'Business',
+    price: 'Custom',
+    gst: 'GST as applicable',
+    total: 'Negotiated',
+    target: 'Enterprise',
+    clients: 'Unlimited clients',
+    users: 'Unlimited users',
+    storage: 'Custom storage',
+    cta: 'Talk to us',
+    href: 'mailto:askinfrons@gmail.com',
+    featured: false,
+  },
+]
+
 function Wordmark({ light = false }) {
   return (
     <Link to="/" style={{ display: 'inline-flex', alignItems: 'baseline', gap: '2px', textDecoration: 'none' }}>
@@ -50,11 +92,16 @@ function PublicNav() {
         <Wordmark />
         <nav style={{ display: 'flex', alignItems: 'center', gap: '18px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {[
+            ['Pricing', '/#pricing'],
             ['Privacy', '/privacy'],
             ['Terms', '/terms'],
             ['Data usage', '/data-usage'],
             ['Support', '/support'],
-          ].map(([label, href]) => (
+          ].map(([label, href]) => href.startsWith('/#') ? (
+            <a key={href} href={href} style={{ color: brand.muted, textDecoration: 'none', fontSize: '13px', fontWeight: 600 }}>
+              {label}
+            </a>
+          ) : (
             <Link key={href} to={href} style={{ color: brand.muted, textDecoration: 'none', fontSize: '13px', fontWeight: 600 }}>
               {label}
             </Link>
@@ -88,11 +135,16 @@ function PublicFooter() {
         </div>
         <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
           {[
+            ['Pricing', '/#pricing'],
             ['Privacy', '/privacy'],
             ['Terms', '/terms'],
             ['Data usage', '/data-usage'],
             ['Support', '/support'],
-          ].map(([label, href]) => (
+          ].map(([label, href]) => href.startsWith('/#') ? (
+            <a key={href} href={href} style={{ color: brand.muted, textDecoration: 'none', fontSize: '13px', fontWeight: 600 }}>
+              {label}
+            </a>
+          ) : (
             <Link key={href} to={href} style={{ color: brand.muted, textDecoration: 'none', fontSize: '13px', fontWeight: 600 }}>
               {label}
             </Link>
@@ -287,6 +339,148 @@ export function MarketingHome() {
                 <h3 style={{ color: brand.ink, fontSize: '16px', marginBottom: '8px' }}>{title}</h3>
                 <p style={{ color: brand.muted, fontSize: '14px', lineHeight: 1.65 }}>{body}</p>
               </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section id="pricing" style={{ padding: '72px 24px', background: '#FFFFFF', borderTop: `1px solid ${brand.line}` }}>
+        <div style={{ maxWidth: '1120px', margin: '0 auto' }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            gap: '24px',
+            alignItems: 'flex-end',
+            flexWrap: 'wrap',
+            marginBottom: '28px',
+          }}>
+            <div style={{ maxWidth: '650px' }}>
+              <p style={{
+                color: brand.accentDark,
+                fontSize: '12px',
+                fontWeight: 800,
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                marginBottom: '10px',
+              }}>
+                Pricing
+              </p>
+              <h2 style={{ fontSize: '32px', lineHeight: 1.15, letterSpacing: '-0.035em', color: brand.ink }}>
+                Simple plans for CA practices as they grow.
+              </h2>
+              <p style={{ marginTop: '12px', color: brand.muted, fontSize: '15px', lineHeight: 1.7 }}>
+                Prices are shown ex-GST for comparison. The monthly total includes 18% GST where fixed pricing applies.
+              </p>
+            </div>
+            <span style={{
+              background: '#ecfdf5',
+              color: '#047857',
+              border: '1px solid #a7f3d0',
+              borderRadius: '999px',
+              padding: '8px 12px',
+              fontSize: '12px',
+              fontWeight: 800,
+              whiteSpace: 'nowrap',
+            }}>
+              Effective immediately
+            </span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
+            {pricingPlans.map((plan) => (
+              <div key={plan.name} style={{
+                position: 'relative',
+                border: `1px solid ${plan.featured ? brand.accent : brand.line}`,
+                borderRadius: '12px',
+                padding: '24px',
+                background: plan.featured ? '#eef2ff' : '#FFFFFF',
+                boxShadow: plan.featured ? '0 16px 36px rgba(99,102,241,0.14)' : '0 1px 3px rgba(15,23,42,0.06)',
+              }}>
+                {plan.featured && (
+                  <span style={{
+                    position: 'absolute',
+                    top: '16px',
+                    right: '16px',
+                    background: brand.accent,
+                    color: '#FFFFFF',
+                    borderRadius: '999px',
+                    padding: '5px 9px',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                  }}>
+                    Popular
+                  </span>
+                )}
+                <h3 style={{ color: brand.ink, fontSize: '18px', marginBottom: '8px' }}>{plan.name}</h3>
+                <p style={{ color: brand.muted, fontSize: '13px', fontWeight: 700, marginBottom: '18px' }}>{plan.target}</p>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginBottom: '4px' }}>
+                  <span style={{ color: brand.ink, fontSize: '34px', fontWeight: 850, letterSpacing: '-0.035em' }}>{plan.price}</span>
+                  {plan.price !== 'Custom' && <span style={{ color: brand.muted, fontSize: '14px', fontWeight: 700 }}>/mo</span>}
+                </div>
+                <p style={{ color: brand.muted, fontSize: '13px', marginBottom: '4px' }}>{plan.gst}</p>
+                <p style={{ color: brand.ink, fontSize: '14px', fontWeight: 800, marginBottom: '20px' }}>Total: {plan.total}</p>
+                <div style={{ display: 'grid', gap: '10px', marginBottom: '22px' }}>
+                  {[plan.clients, plan.users, plan.storage].map((item) => (
+                    <div key={item} style={{ display: 'flex', alignItems: 'center', gap: '8px', color: brand.muted, fontSize: '14px' }}>
+                      <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: plan.featured ? brand.accent : brand.green, flexShrink: 0 }} />
+                      <span>{item}</span>
+                    </div>
+                  ))}
+                </div>
+                {plan.href.startsWith('mailto:') ? (
+                  <a href={plan.href} style={{
+                    display: 'inline-flex',
+                    justifyContent: 'center',
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    background: '#FFFFFF',
+                    color: brand.accentDark,
+                    border: `1px solid ${brand.accent}`,
+                    borderRadius: '10px',
+                    padding: '12px 16px',
+                    textDecoration: 'none',
+                    fontSize: '14px',
+                    fontWeight: 800,
+                  }}>
+                    {plan.cta}
+                  </a>
+                ) : (
+                  <Link to={plan.href} style={{
+                    display: 'inline-flex',
+                    justifyContent: 'center',
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    background: plan.featured ? brand.accent : '#FFFFFF',
+                    color: plan.featured ? '#FFFFFF' : brand.accentDark,
+                    border: `1px solid ${brand.accent}`,
+                    borderRadius: '10px',
+                    padding: '12px 16px',
+                    textDecoration: 'none',
+                    fontSize: '14px',
+                    fontWeight: 800,
+                  }}>
+                    {plan.cta}
+                  </Link>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div style={{
+            marginTop: '18px',
+            border: `1px solid ${brand.line}`,
+            borderRadius: '12px',
+            padding: '16px',
+            background: brand.soft,
+            display: 'grid',
+            gap: '8px',
+          }}>
+            {[
+              'Starter and Pro prices are fixed.',
+              'Business pricing is tailored on a call for higher-volume or custom storage needs.',
+              'Written totals include GST for fixed plans.',
+            ].map((note) => (
+              <p key={note} style={{ color: brand.muted, fontSize: '13px', lineHeight: 1.6 }}>{note}</p>
             ))}
           </div>
         </div>

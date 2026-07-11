@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from './supabaseClient'
 import Sidebar from './Sidebar'
+import { formatRelativeTime } from './activityTracker'
 
 export default function Notes() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [client, setClient] = useState(null)
   const [notes, setNotes] = useState([])
+  const [activityLog, setActivityLog] = useState([])
   const [newNote, setNewNote] = useState('')
   const [editingNote, setEditingNote] = useState(null)
   const [editContent, setEditContent] = useState('')
@@ -23,6 +25,7 @@ export default function Notes() {
     if (!user) { navigate('/login'); return }
     setCurrentUser(user)
     await fetchClient()
+    await fetchActivityLog()
     await fetchNotes()
   }
 
@@ -69,6 +72,22 @@ export default function Notes() {
     finally { setLoading(false) }
   }
 
+  const fetchActivityLog = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('client_activity')
+        .select('id, type, description, metadata, created_at')
+        .eq('client_id', id)
+        .order('created_at', { ascending: false })
+        .limit(30)
+      if (error) throw error
+      setActivityLog(data || [])
+    } catch (err) {
+      console.warn('Activity tracker: activity log could not be loaded.', err.message)
+      setActivityLog([])
+    }
+  }
+
   const addNote = async (e) => {
     e.preventDefault()
     if (!newNote.trim()) return
@@ -106,6 +125,16 @@ export default function Notes() {
   const formatDate = (ts) => new Date(ts).toLocaleString('en-IN', {
     day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
   })
+
+  const getActivityLabel = (activity) => {
+    const labels = {
+      portal_opened: 'Portal opened',
+      message_sent: 'Message activity',
+      messages_seen: 'Messages seen',
+      file_downloaded: 'File downloaded',
+    }
+    return labels[activity.type] || activity.description
+  }
 
   const textareaStyle = {
     width: '100%', border: '1px solid var(--border)', borderRadius: '8px',
@@ -197,6 +226,46 @@ export default function Notes() {
                 </button>
               </div>
             </form>
+          </div>
+
+          {/* Activity log */}
+          <div style={{
+            background: 'var(--bg-surface)', border: '1px solid var(--border)',
+            borderRadius: '12px', padding: '20px', marginBottom: '24px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+              <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)' }}>Activity log</h2>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{activityLog.length} recent</span>
+            </div>
+            {activityLog.length === 0 ? (
+              <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                No activity recorded yet.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {activityLog.map((activity) => (
+                  <div key={activity.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                    <span style={{
+                      width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent)',
+                      marginTop: '6px', flexShrink: 0,
+                    }} />
+                    <div style={{ flex: 1 }}>
+                      <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                        {getActivityLabel(activity)}
+                      </p>
+                      <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                        {activity.description}
+                        {activity.metadata?.file_name ? ` - ${activity.metadata.file_name}` : ''}
+                      </p>
+                    </div>
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                      {formatRelativeTime(activity.created_at)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Notes list */}

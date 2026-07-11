@@ -124,6 +124,43 @@ Build INFRONS — a client communication web app for CA (Chartered Accountant) p
 - Build verification:
   - `npm.cmd run build` passed.
 
+### Client Activity Tracker - 2026-07-04
+- Added `activity_tracker_setup.sql`.
+  - Adds `clients.portal_last_opened` and `clients.last_activity_at`.
+  - Adds `messages.delivered_at`, `messages.seen_at`, and `messages.file_downloaded_at`.
+  - Adds `client_activity` table with RLS for authenticated practice members.
+  - Adds safe Supabase RPC functions for public portal activity:
+    - `record_portal_open(p_token text)`
+    - `mark_client_messages_seen(p_client_id uuid)`
+    - `record_file_download(p_message_id uuid)`
+  - Adds a message insert trigger to set delivered time, update client last activity, and log message activity.
+- Added `src/activityTracker.js`.
+  - Shared relative-time formatter.
+  - Best-effort activity RPC helpers that warn in console instead of breaking existing UI if SQL has not been run yet.
+- `src/Dashboard.jsx`
+  - Client fetch includes `portal_last_opened` and `last_activity_at`.
+  - Client rows now show `Last active: ...`.
+  - Falls back to the previous client column list if the tracker SQL has not been run yet.
+- `src/Messages.jsx`
+  - Message fetch includes receipt/download fields.
+  - Falls back to the previous message column list if the tracker SQL has not been run yet.
+  - Realtime updates now handle message UPDATE events as well as INSERT events.
+  - Practice-sent messages show receipt ticks: sent, delivered, or seen.
+  - File links record download activity on click.
+  - New CA messages now insert with `is_read: false` so they become seen only after the client opens the portal.
+- `src/ClientPortal.jsx`
+  - Portal open records `portal_last_opened` and updates last activity through RPC.
+  - Opening the portal marks CA messages as seen through RPC.
+  - Message loading falls back to the previous column list if the tracker SQL has not been run yet.
+  - File links record download activity on click.
+- `src/Notes.jsx`
+  - Internal notes now include a recent activity log for the client.
+  - Activity log loading is non-blocking; notes still work if the tracker SQL has not been applied yet.
+- Required Supabase step:
+  - Run `activity_tracker_setup.sql` in the Supabase SQL editor before expecting live portal/read/download tracking to persist.
+- Build verification:
+  - `npm.cmd run build` passed.
+
 ### Public Homepage and Policy Pages - 2026-06-12
 - `src/PublicPages.jsx`
   - Added a full public marketing homepage for `/` with hero, product preview, feature sections, policy/support links, and CTAs.
@@ -174,6 +211,22 @@ Build INFRONS — a client communication web app for CA (Chartered Accountant) p
     - authenticated users can insert only their own practice where `id = auth.uid()`
     - practice members can read their practice through `users.practice_id`
     - principal owners can update their own practice
+- Build verification:
+  - `npm.cmd run build` passed.
+
+### Homepage Pricing Section - 2026-07-11
+- Source document:
+  - Used `C:\Users\Admin\Downloads\INFRONS_Revised_Pricing.docx` as the pricing source.
+  - Published customer-facing plan details only; internal cost/margin notes from the document were not added to the public homepage.
+- `src/PublicPages.jsx`
+  - Added `pricingPlans` data for Starter, Pro, and Business.
+  - Added a dedicated homepage pricing section with plan cards:
+    - Starter: ₹999/mo ex-GST, ₹1,179/mo total, 5 clients, 1 user, 1GB storage.
+    - Pro: ₹2,000/mo ex-GST, ₹2,360/mo total, 50 clients, 5 users, 15GB storage.
+    - Business: custom negotiated pricing, unlimited clients/users, custom storage.
+  - Added Pricing links to public nav and footer using `/#pricing`.
+  - Used "Get set up" / "Talk to us" CTA language and avoided publishing internal cost breakdowns.
+- Existing app routes, auth redirects, dashboard, portal, and policy pages were left unchanged.
 - Build verification:
   - `npm.cmd run build` passed.
 
@@ -478,11 +531,13 @@ index.html
 README.md
 practice_rls_policies.sql
 notes_rls_policies.sql
+activity_tracker_setup.sql
 src/
   index.css
   main.jsx
   App.jsx
   supabaseClient.js
+  activityTracker.js
   Login.jsx
   Signup.jsx
   Dashboard.jsx
