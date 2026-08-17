@@ -230,6 +230,35 @@ Build INFRONS — a client communication web app for CA (Chartered Accountant) p
 - Build verification:
   - `npm.cmd run build` passed.
 
+### Client Document Storage - 2026-08-08
+- Added `client_documents_setup.sql`.
+  - Creates private Supabase storage bucket `client-documents`.
+  - Creates `client_documents` metadata table keyed by `client_id` and `practice_id`.
+  - Adds RLS so principals can access practice client documents and staff can access only assigned-client documents.
+  - Adds storage object policies for authenticated upload/read/delete inside each client folder.
+  - Hardened after upload RLS error: added `can_access_client(uuid)` and `can_access_client_path(text)` helper functions, explicit `grant select, insert, delete` on `client_documents`, and helper-based table/storage policies.
+- Added `src/Documents.jsx`.
+  - Protected per-client document folder at `/client/:id/documents`.
+  - Loads the client with the same principal/staff access rules used by notes/messages.
+  - Uploads files into `client-documents/{clientId}/...`.
+  - Enforces the existing 15MB client-side file-size guard.
+  - Lists each document with name, size, and upload time.
+  - Opens files through short-lived signed URLs because the document bucket is private.
+  - Supports deleting document metadata and the stored file.
+  - Upload errors now identify whether the failure happened in Supabase Storage or the `client_documents` metadata insert.
+- `src/App.jsx`
+  - Added protected route `/client/:id/documents`.
+- `src/Sidebar.jsx`
+  - Added Documents tab when a client context is active.
+- `src/Dashboard.jsx`
+  - Added a `Docs` action button per client row.
+  - Dashboard now loads best-effort per-client document counts from `client_documents`.
+  - Client rows show a clickable document count under the activity line; the existing name click still opens edit.
+- Required Supabase step:
+  - Re-run the latest `client_documents_setup.sql` in the Supabase SQL editor before using document storage.
+- Build verification:
+  - `npm.cmd run build` passed after the RLS hardening.
+
 ### Staff Management Build - 2026-05-30
 - `src/Team.jsx`
   - Team page now loads practice members and shows client assignment counts per member.
@@ -323,7 +352,7 @@ Build INFRONS — a client communication web app for CA (Chartered Accountant) p
    - Auto-sorts clients by last_client_reply (red/unresponsive clients at top)
    - Edit client: click name to open modal with pre-filled data
    - Delete client: confirmation prompt before deletion
-   - Navigation buttons: Chat, Notes
+   - Navigation buttons: Chat, Notes, Documents
    - WhatsApp share button to invite clients to their secure portal link
    - CSV Bulk Import: upload, preview, parse client-side with PapaParse, and batch-insert clients from a template CSV
    - Search filters by name, company, and phone
@@ -341,7 +370,7 @@ Build INFRONS — a client communication web app for CA (Chartered Accountant) p
 
 4. **Routing**
    - Public routes: `/`, `/login`, `/signup`, `/portal/:token`, `/404`
-   - Protected routes: `/dashboard`, `/clients`, `/client/:id/messages`, `/client/:id/notes`, `/settings`
+   - Protected routes: `/dashboard`, `/clients`, `/client/:id/messages`, `/client/:id/notes`, `/client/:id/documents`, `/settings`
    - Principal-only protected route: `/settings/team`
    - Old `/team` route redirects to `/settings/team`
    - Logged-in users are redirected away from `/`, `/login`, `/signup` to `/dashboard`
@@ -358,6 +387,7 @@ Build INFRONS — a client communication web app for CA (Chartered Accountant) p
    - `clients`: id, practice_id, assigned_to, name, company, email, phone, portal_token, last_client_reply, follow_up_date, created_at
    - `messages`: id, client_id, sender (ca/client), content, file_url, file_name, is_read, created_at
    - `notes`: id, client_id, user_id, content, created_at
+   - `client_documents`: id, client_id, practice_id, uploaded_by, file_name, file_path, file_size, file_type, created_at
 
 7. **Row-Level Security (RLS) Policies**
    Full RLS implemented for:
@@ -380,6 +410,7 @@ Build INFRONS — a client communication web app for CA (Chartered Accountant) p
 - `src/Signup.jsx` — New practice signup and staff invite signup
 - `src/Messages.jsx` — Client messaging thread
 - `src/Notes.jsx` — Private notes
+- `src/Documents.jsx` — Per-client private document storage
 - `src/ClientPortal.jsx` — Public client portal
 - `src/Settings.jsx` — Practice settings
 - `src/Team.jsx` — Team management and staff invites
@@ -400,6 +431,7 @@ Build INFRONS — a client communication web app for CA (Chartered Accountant) p
 - `storage_setup.sql`
 - `practice_rls_policies.sql`
 - `notes_rls_policies.sql` — run to fix notes insert RLS error
+- `client_documents_setup.sql` — run to enable per-client document storage
 
 ## Issues Encountered & Solutions
 
@@ -532,6 +564,7 @@ README.md
 practice_rls_policies.sql
 notes_rls_policies.sql
 activity_tracker_setup.sql
+client_documents_setup.sql
 src/
   index.css
   main.jsx
@@ -543,6 +576,7 @@ src/
   Dashboard.jsx
   Messages.jsx
   Notes.jsx
+  Documents.jsx
   ClientPortal.jsx
   Settings.jsx
   Team.jsx

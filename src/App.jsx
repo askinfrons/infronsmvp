@@ -5,6 +5,7 @@ import Signup from './Signup'
 import Dashboard from './Dashboard'
 import Messages from './Messages'
 import Notes from './Notes'
+import Documents from './Documents'
 import ClientPortal from './ClientPortal'
 import Team from './Team'
 import Settings from './Settings'
@@ -174,6 +175,7 @@ function App() {
         <Route path="/clients" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
         <Route path="/client/:id/messages" element={<ProtectedRoute><Messages /></ProtectedRoute>} />
         <Route path="/client/:id/notes" element={<ProtectedRoute><Notes /></ProtectedRoute>} />
+        <Route path="/client/:id/documents" element={<ProtectedRoute><Documents /></ProtectedRoute>} />
         <Route path="/portal/:token" element={<ClientPortal />} />
         <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
         <Route path="/settings/team" element={<ProtectedRoute principalOnly><Team /></ProtectedRoute>} />

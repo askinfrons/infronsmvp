@@ -286,6 +286,7 @@ const formatFollowUpDate = (dateStr) => {
 // ─── Main Dashboard ────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const [clients, setClients] = useState([])
+  const [documentCounts, setDocumentCounts] = useState({})
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMoreClients, setHasMoreClients] = useState(false)
@@ -393,8 +394,10 @@ export default function Dashboard() {
       }
 
       if (error) throw error
-      setClients(prev => append ? [...prev, ...(data || [])] : (data || []))
+      const nextClients = append ? [...clients, ...(data || [])] : (data || [])
+      setClients(nextClients)
       setHasMoreClients((data || []).length === CLIENT_PAGE_SIZE)
+      fetchDocumentCounts(nextClients.map(client => client.id))
 
       if (role === 'principal') {
         const { data: staffData } = await supabase
@@ -413,6 +416,30 @@ export default function Dashboard() {
       setLoading(false)
       setLoadingMore(false)
     }
+  }
+
+  const fetchDocumentCounts = async (clientIds) => {
+    if (!clientIds.length) {
+      setDocumentCounts({})
+      return
+    }
+
+    const { data, error } = await supabase
+      .from('client_documents')
+      .select('client_id')
+      .in('client_id', clientIds)
+
+    if (error) {
+      console.warn('Document counts could not be loaded.', error.message)
+      setDocumentCounts({})
+      return
+    }
+
+    const counts = {}
+    for (const doc of data || []) {
+      counts[doc.client_id] = (counts[doc.client_id] || 0) + 1
+    }
+    setDocumentCounts(counts)
   }
 
   const resetImportState = () => {
@@ -1149,6 +1176,7 @@ export default function Dashboard() {
                     const avatarColor = getAvatarColor(client.name)
                     const isCopied = copiedId === client.id
                     const isFollowUpDue = client.follow_up_date && client.follow_up_date <= today
+                    const documentCount = documentCounts[client.id] || 0
                     return (
                       <div
                         key={client.id}
@@ -1203,6 +1231,18 @@ export default function Dashboard() {
                             <p style={{ fontSize: '11.5px', color: '#6B7280', marginTop: '3px', fontWeight: 500 }}>
                               Last active: {formatRelativeTime(client.last_activity_at || client.portal_last_opened || client.last_client_reply)}
                             </p>
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/client/${client.id}/documents`)}
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                background: 'none', border: 'none', padding: 0,
+                                fontSize: '11.5px', color: '#4F46E5', marginTop: '3px',
+                                fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                              }}
+                            >
+                              <IC.FileText /> {documentCount} document{documentCount === 1 ? '' : 's'}
+                            </button>
                             {userRole === 'principal' && client.assigned_to && (
                               <p style={{ fontSize: '11.5px', color: '#6366f1', marginTop: '3px', fontWeight: 500 }}>
                                 Assigned to {getAssignedName(client.assigned_to) || 'Staff member'}
@@ -1231,6 +1271,9 @@ export default function Dashboard() {
                           </ActionBtn>
                           <ActionBtn onClick={() => navigate(`/client/${client.id}/notes`)} title="View notes">
                             <IC.FileText /> Notes
+                          </ActionBtn>
+                          <ActionBtn onClick={() => navigate(`/client/${client.id}/documents`)} title="View documents">
+                            <IC.FileText /> Docs{documentCount ? ` (${documentCount})` : ''}
                           </ActionBtn>
                           <ActionBtn
                             onClick={() => copyPortalLink(client.portal_token, client.id)}

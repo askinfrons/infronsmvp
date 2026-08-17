@@ -225,6 +225,12 @@ export default function Sidebar({ client }) {
               active={location.pathname.includes('/notes')}
               onClick={() => navigate(`/client/${client.id}/notes`)}
             />
+            <NavItem
+              icon={<IC.FileText />}
+              label="Documents"
+              active={location.pathname.includes('/documents')}
+              onClick={() => navigate(`/client/${client.id}/documents`)}
+            />
           </>
         )}
 
