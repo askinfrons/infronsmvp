@@ -259,6 +259,68 @@ Build INFRONS — a client communication web app for CA (Chartered Accountant) p
 - Build verification:
   - `npm.cmd run build` passed after the RLS hardening.
 
+### Client Capacity Tiers - 2026-08-30
+- Strategic product direction:
+  - INFRONS is positioned to replace WhatsApp for finance professionals by becoming the structured client communication system of record.
+  - Capacity tiers are treated as practice infrastructure, not only pricing labels.
+- Added `practice_capacity_setup.sql`.
+  - Adds `practices.client_capacity_tier` and `practices.client_capacity_limit`.
+  - Supported tiers: `0-50`, `51-100`, `101-150`, `151-200`, `201-300`, `300+`.
+  - Adds client-list indexes for larger workspaces: practice, assigned staff, last reply, follow-up date, created date, lower-case name/company, and phone.
+- Added `src/capacityTiers.js`.
+  - Shared tier definitions used by signup, settings, dashboard, and public pricing.
+  - Includes helpers for resolving tier defaults and capacity health.
+- `src/Signup.jsx`
+  - Principal signup now asks for expected client database size.
+  - Staff invite signup is unchanged.
+  - If the SQL has not been run yet, signup falls back to the old practice insert shape so existing signup is not blocked.
+- `src/Settings.jsx`
+  - Added Client database size card.
+  - Principal can update the selected tier.
+  - Staff users see the selected size read-only.
+  - Missing-column errors now tell the user to run `practice_capacity_setup.sql`.
+- `src/Dashboard.jsx`
+  - Loads total client count from Supabase instead of relying only on loaded rows.
+  - Shows a soft capacity banner: healthy, near capacity, capacity reached, or 300+.
+  - Does not block adding clients yet; capacity is advisory until billing/enforcement is built.
+  - Dashboard fetch now applies search, needs-attention filter, and follow-up-due filter to the Supabase query before pagination.
+  - Search is debounced by 300ms and works across the matching database rows, not only the current loaded page.
+  - Load More now remains available for filtered/search results when more matching rows exist.
+- `src/PublicPages.jsx`
+  - Public pricing section now shows selectable client database bands and maps them to Starter, Pro, or Business.
+- Required Supabase step:
+  - Run `practice_capacity_setup.sql` in the Supabase SQL editor before expecting tier values to persist.
+- Build verification:
+  - `npm.cmd run build` passed.
+
+### Client Portal Quick Actions - 2026-09-26
+- Added `quick_actions_setup.sql`.
+  - Adds structured message fields to `messages`: `message_type`, `structured_payload`, `action_status`, and `action_cleared_at`.
+  - Adds token-validated `submit_portal_action` RPC for the public portal, so structured writes do not accept an arbitrary client id.
+  - Adds authenticated RPCs for pending-action notifications, clearing document/query notifications when a CA opens a thread, and approving/rejecting profile updates atomically.
+  - Adds an index for client/action/status lookups.
+- Added `src/quickActions.js` for the shared RPC calls and action labels.
+- `src/ClientPortal.jsx`
+  - Added a compact quick-actions control beside the chat input.
+  - Added validated forms for document requests, pending profile updates, and general queries.
+  - Structured requests use the existing messages Realtime channel and remain separate from normal free-text/file messages.
+- `src/Messages.jsx`
+  - Displays structured badges and request details.
+  - Shows inline Approve/Reject controls for profile updates; approval updates only the submitted client fields.
+  - Clears document/query notification state when the CA opens the client thread.
+- `src/Dashboard.jsx`
+  - Uses the existing bell/Needs Attention surface for pending portal actions.
+  - Notifications show the client and action type and deep-link to the existing messages route.
+  - Dashboard subscribes to `messages` Realtime updates; no polling or parallel notification table was added.
+- Assumptions:
+  - Existing `clients.email`, `clients.phone`, `clients.company`, `clients.assigned_to`, and `messages.id` columns are present, as used by current features.
+  - Profile updates are limited to name, phone, email, and company. Empty submitted values are treated as unchanged rather than destructive clears.
+- Required Supabase step:
+  - Run `quick_actions_setup.sql` in the Supabase SQL editor before using Quick Actions.
+- Build verification:
+  - `npm.cmd run build` passed on 2026-09-26.
+  - Final verification after profile-change payload tightening: `npm.cmd run build` passed on 2026-09-26.
+
 ### Staff Management Build - 2026-05-30
 - `src/Team.jsx`
   - Team page now loads practice members and shows client assignment counts per member.
@@ -355,7 +417,9 @@ Build INFRONS — a client communication web app for CA (Chartered Accountant) p
    - Navigation buttons: Chat, Notes, Documents
    - WhatsApp share button to invite clients to their secure portal link
    - CSV Bulk Import: upload, preview, parse client-side with PapaParse, and batch-insert clients from a template CSV
-   - Search filters by name, company, and phone
+   - Server-backed debounced search by name, company, email, and phone
+   - Server-backed needs-attention and follow-up-due filters
+   - Client capacity banner with selected client database size
    - Principal users can assign clients to staff
    - Staff users only see clients assigned to them
    - Auto-creates missing practice records for existing users
@@ -382,7 +446,7 @@ Build INFRONS — a client communication web app for CA (Chartered Accountant) p
 
 6. **Database Schema (Supabase)**
    Tables created:
-   - `practices`: id, name, email, created_at
+   - `practices`: id, name, email, client_capacity_tier, client_capacity_limit, created_at
    - `users`: id, practice_id, full_name, role (principal/staff), created_at
    - `clients`: id, practice_id, assigned_to, name, company, email, phone, portal_token, last_client_reply, follow_up_date, created_at
    - `messages`: id, client_id, sender (ca/client), content, file_url, file_name, is_read, created_at
@@ -571,6 +635,7 @@ src/
   App.jsx
   supabaseClient.js
   activityTracker.js
+  capacityTiers.js
   Login.jsx
   Signup.jsx
   Dashboard.jsx

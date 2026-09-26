@@ -1,4 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom'
+import { CAPACITY_TIERS } from './capacityTiers'
 
 const brand = {
   ink: '#0f172a',
@@ -384,6 +385,25 @@ export function MarketingHome() {
             }}>
               Effective immediately
             </span>
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+            gap: '10px',
+            marginBottom: '18px',
+          }}>
+            {CAPACITY_TIERS.map((tier) => (
+              <div key={tier.id} style={{
+                border: `1px solid ${brand.line}`,
+                borderRadius: '10px',
+                padding: '12px',
+                background: tier.id === '300+' ? '#F8FAFC' : '#FFFFFF',
+              }}>
+                <p style={{ color: brand.ink, fontSize: '13px', fontWeight: 800 }}>{tier.label}</p>
+                <p style={{ color: brand.muted, fontSize: '12px', marginTop: '4px' }}>{tier.plan}</p>
+              </div>
+            ))}
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>

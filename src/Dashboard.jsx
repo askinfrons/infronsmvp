@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from './supabaseClient'
 import Papa from 'papaparse'
 import { formatRelativeTime } from './activityTracker'
+import { getCapacityStatus } from './capacityTiers'
 
 import Sidebar, { IC } from './Sidebar'
 
@@ -287,6 +288,8 @@ const formatFollowUpDate = (dateStr) => {
 export default function Dashboard() {
   const [clients, setClients] = useState([])
   const [documentCounts, setDocumentCounts] = useState({})
+  const [clientTotalCount, setClientTotalCount] = useState(0)
+  const [practiceCapacity, setPracticeCapacity] = useState({ tier: '0-50', limit: 50 })
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMoreClients, setHasMoreClients] = useState(false)
@@ -306,6 +309,7 @@ export default function Dashboard() {
   const [practiceId, setPracticeId] = useState(null)
   const [cachedPracticeName, setCachedPracticeName] = useState('Practice')
   const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
   const [showImportModal, setShowImportModal] = useState(false)
   const [importFile, setImportFile] = useState(null)
   const [importData, setImportData] = useState([])
@@ -316,15 +320,40 @@ export default function Dashboard() {
   const [dragActive, setDragActive] = useState(false)
   const [toast, setToast] = useState(null)
   const [showUpcomingPanel, setShowUpcomingPanel] = useState(false)
+  const [actionNotifications, setActionNotifications] = useState([])
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => { checkAuth() }, [])
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchQuery(searchQuery.trim()), 300)
+    return () => clearTimeout(timer)
+  }, [searchQuery])
+
+  useEffect(() => {
+    fetchClients()
+  }, [debouncedSearchQuery, filterAttention, filterFollowUp])
+
+  useEffect(() => {
+    if (!practiceId) return
+    fetchActionNotifications()
+    const channel = supabase
+      .channel(`dashboard-quick-actions:${practiceId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => fetchActionNotifications())
+      .subscribe()
+    return () => supabase.removeChannel(channel)
+  }, [practiceId, userRole])
 
   const checkAuth = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { navigate('/login'); return }
     setUserEmail(user.email || '')
-    fetchClients()
+  }
+
+  const fetchActionNotifications = async () => {
+    const { data, error: notificationError } = await supabase.rpc('get_pending_portal_actions')
+    if (!notificationError) setActionNotifications(data || [])
   }
 
   const fetchClients = async ({ append = false } = {}) => {
@@ -354,37 +383,68 @@ export default function Dashboard() {
       setUserRole(role)
       setPracticeId(pid)
 
-      const { data: practiceData } = await supabase
+      let { data: practiceData } = await supabase
         .from('practices')
-        .select('name')
+        .select('name, client_capacity_tier, client_capacity_limit')
         .eq('id', pid)
         .maybeSingle()
+
+      if (!practiceData) {
+        const fallback = await supabase
+          .from('practices')
+          .select('name')
+          .eq('id', pid)
+          .maybeSingle()
+        practiceData = fallback.data
+      }
+
       if (practiceData?.name) {
         setCachedPracticeName(practiceData.name)
       }
+      setPracticeCapacity({
+        tier: practiceData?.client_capacity_tier || '0-50',
+        limit: practiceData?.client_capacity_limit ?? 50,
+      })
 
       const start = append ? clients.length : 0
       const end = start + CLIENT_PAGE_SIZE - 1
 
-      const clientColumns = 'id, practice_id, assigned_to, name, company, phone, portal_token, last_client_reply, follow_up_date, portal_last_opened, last_activity_at, created_at'
-      const fallbackClientColumns = 'id, practice_id, assigned_to, name, company, phone, portal_token, last_client_reply, follow_up_date, created_at'
+      const clientColumns = 'id, practice_id, assigned_to, name, company, email, phone, portal_token, last_client_reply, follow_up_date, portal_last_opened, last_activity_at, created_at'
+      const fallbackClientColumns = 'id, practice_id, assigned_to, name, company, email, phone, portal_token, last_client_reply, follow_up_date, created_at'
 
-      let query = supabase
+      const applyQueryRules = (queryToShape) => {
+        let shapedQuery = queryToShape.eq('practice_id', pid)
+        if (role === 'staff') shapedQuery = shapedQuery.eq('assigned_to', user.id)
+        if (filterAttention) {
+          const activeCutoff = new Date(Date.now() - 2 * 86400000).toISOString()
+          shapedQuery = shapedQuery.or(`last_client_reply.is.null,last_client_reply.lt.${activeCutoff}`)
+        }
+        if (filterFollowUp) shapedQuery = shapedQuery.lte('follow_up_date', today)
+        if (debouncedSearchQuery) {
+          const q = debouncedSearchQuery.replace(/[%_,]/g, ' ').trim()
+          if (q) shapedQuery = shapedQuery.or(`name.ilike.%${q}%,company.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%`)
+        }
+        return shapedQuery
+      }
+
+      let countQuery = applyQueryRules(
+        supabase.from('clients').select('id', { count: 'exact', head: true })
+      )
+      const { count } = await countQuery
+      setClientTotalCount(count || 0)
+
+      let query = applyQueryRules(supabase
         .from('clients')
-        .select(clientColumns)
-        .eq('practice_id', pid)
-      if (role === 'staff') query = query.eq('assigned_to', user.id)
+        .select(clientColumns))
 
       let { data, error } = await query
         .order('last_client_reply', { ascending: true, nullsFirst: true })
         .range(start, end)
 
       if (error?.message?.includes('column')) {
-        let fallbackQuery = supabase
+        let fallbackQuery = applyQueryRules(supabase
           .from('clients')
-          .select(fallbackClientColumns)
-          .eq('practice_id', pid)
-        if (role === 'staff') fallbackQuery = fallbackQuery.eq('assigned_to', user.id)
+          .select(fallbackClientColumns))
 
         const fallback = await fallbackQuery
           .order('last_client_reply', { ascending: true, nullsFirst: true })
@@ -700,7 +760,7 @@ export default function Dashboard() {
 
   const needsAttentionCount = clients.filter(c =>
     !c.last_client_reply || Math.floor((Date.now() - new Date(c.last_client_reply).getTime()) / 86400000) > 5
-  ).length
+  ).length + actionNotifications.length
 
   const dueFollowUps = clients.filter(c => c.follow_up_date && c.follow_up_date <= today)
 
@@ -737,6 +797,7 @@ export default function Dashboard() {
 
   const anyFilterActive = filterAttention || filterFollowUp || searchQuery.trim()
   const getAssignedName = (assignedTo) => team.find(member => member.id === assignedTo)?.full_name
+  const capacityStatus = getCapacityStatus(clientTotalCount || clients.length, practiceCapacity.tier, practiceCapacity.limit)
 
   if (loading) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F4F6FB' }}>
@@ -844,6 +905,8 @@ export default function Dashboard() {
               {[<IC.Bell />, <IC.Settings />].map((ico, i) => (
                 <button
                   key={i}
+                  onClick={() => i === 0 ? setNotificationsOpen(value => !value) : navigate('/settings')}
+                  aria-label={i === 0 ? 'Notifications' : 'Settings'}
                   className="topbar-icon-btn"
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -853,8 +916,15 @@ export default function Dashboard() {
                   }}
                 >
                   {ico}
+                  {i === 0 && actionNotifications.length > 0 && <span style={{ position: 'absolute', margin: '-20px 0 0 18px', minWidth: '16px', height: '16px', padding: '0 3px', borderRadius: '999px', background: '#EF4444', color: 'white', fontSize: '10px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{actionNotifications.length > 9 ? '9+' : actionNotifications.length}</span>}
                 </button>
               ))}
+              {notificationsOpen && (
+                <div style={{ position: 'absolute', top: '58px', right: '72px', zIndex: 30, width: '320px', maxWidth: 'calc(100vw - 32px)', background: 'white', border: '1px solid #E5E7EB', borderRadius: '10px', boxShadow: '0 16px 40px rgba(15,23,42,0.14)', padding: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 4px 10px' }}><strong style={{ fontSize: '13px', color: '#111827' }}>Needs attention</strong><span style={{ color: '#6B7280', fontSize: '11px' }}>{actionNotifications.length} request{actionNotifications.length === 1 ? '' : 's'}</span></div>
+                  {actionNotifications.length === 0 ? <p style={{ padding: '12px 4px', color: '#6B7280', fontSize: '13px' }}>You’re all caught up.</p> : actionNotifications.map(notification => <button key={notification.id} onClick={() => { setNotificationsOpen(false); navigate(`/client/${notification.client_id}/messages`) }} style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', borderTop: '1px solid #F3F4F6', background: 'white', padding: '11px 4px', cursor: 'pointer', color: '#374151', fontFamily: 'inherit' }}><strong style={{ display: 'block', fontSize: '13px' }}>{notification.client_name} {notification.message_type === 'document_request' ? 'requested a document' : notification.message_type === 'profile_update' ? 'requested a profile update' : 'sent a query'}</strong><span style={{ display: 'block', marginTop: '3px', fontSize: '11px', color: '#6B7280' }}>Open conversation</span></button>)}
+                </div>
+              )}
             </div>
           </header>
 
@@ -978,6 +1048,59 @@ export default function Dashboard() {
                 </div>
               )}
 
+              {/* Capacity banner */}
+              {clientTotalCount > 0 && (
+                <div style={{
+                  background: capacityStatus.tone === 'danger' ? '#FEF2F2' : capacityStatus.tone === 'warning' ? '#FFFBEB' : '#FFFFFF',
+                  border: `1px solid ${capacityStatus.tone === 'danger' ? '#FECACA' : capacityStatus.tone === 'warning' ? '#FEF08A' : '#E5E7EB'}`,
+                  borderRadius: '10px',
+                  padding: '12px 16px',
+                  marginBottom: '20px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '14px',
+                  flexWrap: 'wrap',
+                }}>
+                  <div style={{ flex: 1, minWidth: '220px' }}>
+                    <p style={{ color: '#111827', fontSize: '13.5px', fontWeight: 700 }}>
+                      Client database: {clientTotalCount}{capacityStatus.tier.limit ? ` / ${capacityStatus.tier.limit}` : '+'} clients
+                    </p>
+                    <p style={{ color: '#6B7280', fontSize: '12.5px', marginTop: '3px' }}>
+                      {capacityStatus.tier.label} tier - {capacityStatus.label}
+                    </p>
+                  </div>
+                  {capacityStatus.tier.limit && (
+                    <div style={{
+                      width: '180px',
+                      height: '8px',
+                      borderRadius: '999px',
+                      background: '#E5E7EB',
+                      overflow: 'hidden',
+                    }}>
+                      <div style={{
+                        width: `${capacityStatus.percent}%`,
+                        height: '100%',
+                        background: capacityStatus.tone === 'danger' ? '#EF4444' : capacityStatus.tone === 'warning' ? '#F59E0B' : '#10B981',
+                        borderRadius: '999px',
+                      }} />
+                    </div>
+                  )}
+                  {userRole === 'principal' && (
+                    <button
+                      type="button"
+                      onClick={() => navigate('/settings')}
+                      style={{
+                        background: '#FFFFFF', color: '#4F46E5', border: '1px solid #C7D2FE',
+                        borderRadius: '8px', padding: '8px 12px', fontSize: '12.5px',
+                        fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                      }}
+                    >
+                      Change size
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* Follow-up due banner — only when filter is off */}
               {dueFollowUps.length > 0 && !filterFollowUp && (
                 <div
@@ -1052,11 +1175,17 @@ export default function Dashboard() {
 
               {/* Stats row */}
               {clients.length > 0 && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '28px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '16px', marginBottom: '28px' }}>
                   <StatCard
-                    label="Total Clients" value={clients.length}
+                    label="Total Clients" value={clientTotalCount || clients.length}
                     color="#6366f1" bg="#eef2ff"
                     icon={<IC.Users />}
+                  />
+                  <StatCard
+                    label="Capacity" value={capacityStatus.tier.label}
+                    color={capacityStatus.tone === 'danger' ? '#EF4444' : capacityStatus.tone === 'warning' ? '#F59E0B' : '#10B981'}
+                    bg={capacityStatus.tone === 'danger' ? '#FEF2F2' : capacityStatus.tone === 'warning' ? '#FFFBEB' : '#ECFDF5'}
+                    icon={<IC.Shield />}
                   />
                   <StatCard
                     label="Active" value={activeCount}
@@ -1078,7 +1207,7 @@ export default function Dashboard() {
               {anyFilterActive && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
                   <span style={{ fontSize: '13px', color: '#6B7280' }}>
-                    Showing {displayedClients.length} of {clients.length} clients
+                    Showing {displayedClients.length} of {clientTotalCount || clients.length} clients
                   </span>
                   <button
                     onClick={clearAllFilters}
@@ -1309,7 +1438,7 @@ export default function Dashboard() {
                       </div>
                     )
                   })}
-                  {hasMoreClients && !anyFilterActive && (
+                  {hasMoreClients && (
                     <div style={{
                       padding: '16px 22px',
                       display: 'flex',

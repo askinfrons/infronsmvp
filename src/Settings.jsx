@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Sidebar, { IC } from './Sidebar'
 import { supabase } from './supabaseClient'
+import { CAPACITY_TIERS, DEFAULT_CAPACITY_TIER, getCapacityTier } from './capacityTiers'
 
 const fieldInputStyle = {
   width: '180px', border: '1px solid #E5E7EB', borderRadius: '8px',
@@ -46,6 +47,8 @@ export default function Settings() {
   const [savingPractice, setSavingPractice] = useState(false)
   const [practiceError, setPracticeError] = useState('')
   const [practiceSuccess, setPracticeSuccess] = useState('')
+  const [capacityTierId, setCapacityTierId] = useState(DEFAULT_CAPACITY_TIER.id)
+  const [savingCapacity, setSavingCapacity] = useState(false)
 
   // Account login email editing
   const [accountEmail, setAccountEmail] = useState('')
@@ -77,16 +80,27 @@ export default function Settings() {
       if (userError) throw userError
       setProfile(userData)
 
-      const { data: practiceData, error: practiceError } = await supabase
+      let { data: practiceData, error: practiceError } = await supabase
         .from('practices')
-        .select('id, name, email, created_at')
+        .select('id, name, email, client_capacity_tier, client_capacity_limit, created_at')
         .eq('id', userData.practice_id)
         .maybeSingle()
+
+      if (practiceError?.message?.includes('column')) {
+        const fallback = await supabase
+          .from('practices')
+          .select('id, name, email, created_at')
+          .eq('id', userData.practice_id)
+          .maybeSingle()
+        practiceData = fallback.data
+        practiceError = fallback.error
+      }
 
       if (practiceError) throw practiceError
 
       if (practiceData) {
         setPractice(practiceData)
+        setCapacityTierId(getCapacityTier(practiceData.client_capacity_tier, practiceData.client_capacity_limit).id)
         return
       }
 
@@ -99,13 +113,25 @@ export default function Settings() {
         id: userData.practice_id,
         name: 'Practice',
         email: user.email,
+        client_capacity_tier: DEFAULT_CAPACITY_TIER.id,
+        client_capacity_limit: DEFAULT_CAPACITY_TIER.limit,
       }
 
-      const { data: createdPractice, error: createPracticeError } = await supabase
+      let { data: createdPractice, error: createPracticeError } = await supabase
         .from('practices')
         .upsert([fallbackPractice])
-        .select('id, name, email, created_at')
+        .select('id, name, email, client_capacity_tier, client_capacity_limit, created_at')
         .single()
+
+      if (createPracticeError?.message?.includes('column')) {
+        const fallback = await supabase
+          .from('practices')
+          .upsert([{ id: userData.practice_id, name: 'Practice', email: user.email }])
+          .select('id, name, email, created_at')
+          .single()
+        createdPractice = fallback.data
+        createPracticeError = fallback.error
+      }
 
       if (createPracticeError) throw createPracticeError
       setPractice(createdPractice || fallbackPractice)
@@ -164,6 +190,38 @@ export default function Settings() {
     setPractice((prev) => ({ ...prev, name: data[0].name, email: data[0].email }))
     setEditingPractice(false)
     setPracticeSuccess('Practice details updated.')
+  }
+
+  const handleSaveCapacity = async () => {
+    setPracticeError('')
+    setPracticeSuccess('')
+    const selectedTier = getCapacityTier(capacityTierId)
+
+    setSavingCapacity(true)
+    const { data, error } = await supabase
+      .from('practices')
+      .update({
+        client_capacity_tier: selectedTier.id,
+        client_capacity_limit: selectedTier.limit || 0,
+      })
+      .eq('id', practice.id)
+      .select('id, name, email, client_capacity_tier, client_capacity_limit')
+    setSavingCapacity(false)
+
+    if (error) {
+      setPracticeError(error.message.includes('column')
+        ? 'Client capacity fields are missing. Run practice_capacity_setup.sql in Supabase first.'
+        : error.message)
+      return
+    }
+
+    if (!data || data.length === 0) {
+      setPracticeError('Capacity was not saved. Your account may not have permission to edit practice details.')
+      return
+    }
+
+    setPractice(prev => ({ ...prev, ...data[0] }))
+    setPracticeSuccess('Client database size updated.')
   }
 
   const startEditEmail = () => {
@@ -352,6 +410,74 @@ export default function Settings() {
               Only the principal account can edit practice name and email.
             </p>
           )}
+
+          {/* Client capacity card */}
+          <div style={{
+            background: '#FFFFFF',
+            border: '1px solid #E5E7EB',
+            borderRadius: '16px',
+            overflow: 'hidden',
+            boxShadow: '0 1px 6px rgba(0,0,0,0.06)',
+            marginTop: canEditPractice ? '20px' : '0',
+            marginBottom: '12px',
+          }}>
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '14px 20px', borderBottom: '1px solid #F3F4F6',
+            }}>
+              <span style={{ fontSize: '13px', fontWeight: 700, color: '#111827' }}>Client database size</span>
+              <span style={{ fontSize: '12px', color: '#6B7280', fontWeight: 600 }}>
+                {getCapacityTier(practice?.client_capacity_tier, practice?.client_capacity_limit).plan}
+              </span>
+            </div>
+            <div style={{ padding: '16px 20px', display: 'grid', gap: '12px' }}>
+              <p style={{ fontSize: '13px', color: '#6B7280', lineHeight: 1.6 }}>
+                Choose the client volume INFRONS should be ready for in this workspace.
+              </p>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <select
+                  value={capacityTierId}
+                  onChange={(e) => setCapacityTierId(e.target.value)}
+                  disabled={!canEditPractice || savingCapacity}
+                  style={{
+                    minWidth: '220px',
+                    border: '1px solid #E5E7EB',
+                    borderRadius: '8px',
+                    padding: '8px 10px',
+                    fontSize: '13px',
+                    color: '#111827',
+                    background: canEditPractice ? '#FFFFFF' : '#F9FAFB',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  {CAPACITY_TIERS.map((tier) => (
+                    <option key={tier.id} value={tier.id}>
+                      {tier.label} - {tier.plan}
+                    </option>
+                  ))}
+                </select>
+                {canEditPractice && (
+                  <button
+                    type="button"
+                    onClick={handleSaveCapacity}
+                    disabled={savingCapacity || capacityTierId === getCapacityTier(practice?.client_capacity_tier, practice?.client_capacity_limit).id}
+                    style={{
+                      ...smallBtnStyle('primary'),
+                      opacity: savingCapacity || capacityTierId === getCapacityTier(practice?.client_capacity_tier, practice?.client_capacity_limit).id ? 0.6 : 1,
+                      cursor: savingCapacity || capacityTierId === getCapacityTier(practice?.client_capacity_tier, practice?.client_capacity_limit).id ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {savingCapacity ? 'Saving...' : 'Save size'}
+                  </button>
+                )}
+              </div>
+              {!canEditPractice && (
+                <p style={{ fontSize: '12px', color: '#9CA3AF' }}>
+                  Only the principal account can change client database size.
+                </p>
+              )}
+            </div>
+          </div>
 
           {/* Account login email card */}
           <div style={{

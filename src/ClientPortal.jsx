@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from './supabaseClient'
 import { markClientMessagesSeen, recordFileDownload, recordPortalOpen } from './activityTracker'
+import { submitPortalAction } from './quickActions'
 
 export default function ClientPortal() {
   const { token } = useParams()
@@ -15,6 +16,10 @@ export default function ClientPortal() {
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
   const [messageTimestamps, setMessageTimestamps] = useState([])
+  const [quickActionsOpen, setQuickActionsOpen] = useState(false)
+  const [activeAction, setActiveAction] = useState(null)
+  const [actionForm, setActionForm] = useState({ document: '', due_date: '', name: '', phone: '', email: '', company: '', text: '' })
+  const [actionSubmitting, setActionSubmitting] = useState(false)
   const messagesEndRef = useRef(null)
   const fileInputRef = useRef(null)
 
@@ -49,7 +54,7 @@ export default function ClientPortal() {
       setError('')
       const { data, error } = await supabase
         .from('clients')
-        .select('id, practice_id, name, company, portal_token, practices(name)')
+        .select('id, practice_id, name, company, email, phone, portal_token, practices(name)')
         .eq('portal_token', token)
         .single()
       if (error) throw error
@@ -138,6 +143,39 @@ export default function ClientPortal() {
       setError('')
       setSelectedFile(file)
     }
+  }
+
+  const openAction = (action) => {
+    setError('')
+    setActionForm({
+      document: '', due_date: '', name: client?.name || '', phone: client?.phone || '',
+      email: client?.email || '', company: client?.company || '', text: '',
+    })
+    setActiveAction(action)
+    setQuickActionsOpen(false)
+  }
+
+  const submitAction = async (e) => {
+    e.preventDefault()
+    const payload = activeAction === 'document_request'
+      ? { document: actionForm.document.trim(), due_date: actionForm.due_date || null }
+      : activeAction === 'general_query'
+        ? { text: actionForm.text.trim() }
+      : Object.fromEntries(['name', 'phone', 'email', 'company']
+          .map(field => [field, actionForm[field].trim()])
+          .filter(([field, value]) => value && value !== (client?.[field] || '').trim()))
+    if (activeAction === 'document_request' && !payload.document) return setError('Please describe the document you need.')
+    if (activeAction === 'general_query' && !payload.text) return setError('Please enter your query.')
+    if (activeAction === 'profile_update' && !Object.keys(payload).length) return setError('Please change at least one profile field.')
+    if (payload.email && !/^\S+@\S+\.\S+$/.test(payload.email)) return setError('Please enter a valid email address.')
+    setActionSubmitting(true)
+    try {
+      const { error: actionError } = await submitPortalAction(token, activeAction, payload)
+      if (actionError) throw actionError
+      setActiveAction(null)
+      setActionForm({ document: '', due_date: '', name: '', phone: '', email: '', company: '', text: '' })
+    } catch (err) { setError(err.message) }
+    finally { setActionSubmitting(false) }
   }
 
   const formatTime = (ts) => new Date(ts).toLocaleString('en-IN', {
@@ -247,6 +285,11 @@ export default function ClientPortal() {
                       {practice?.name}
                     </p>
                   )}
+                  {msg.message_type && msg.message_type !== 'text' && (
+                    <span style={{ display: 'inline-block', marginBottom: '7px', padding: '3px 8px', borderRadius: '999px', background: isClient ? 'rgba(255,255,255,0.18)' : 'rgba(99,102,241,0.1)', color: isClient ? 'white' : 'var(--accent)', fontSize: '11px', fontWeight: 600 }}>
+                      {msg.message_type === 'document_request' ? 'Document Request' : msg.message_type === 'profile_update' ? 'Profile Update Requested' : 'Query'}
+                    </span>
+                  )}
                   <p style={{ fontSize: '14px', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                     {msg.content}
                   </p>
@@ -318,6 +361,16 @@ export default function ClientPortal() {
             >
               📎
             </button>
+            <button
+              type="button"
+              aria-label="Quick actions"
+              title="Quick actions"
+              onClick={() => setQuickActionsOpen(value => !value)}
+              disabled={sending || uploading}
+              style={{ background: quickActionsOpen ? 'rgba(99,102,241,0.1)' : 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px', cursor: 'pointer', color: 'var(--accent)', fontSize: '16px', flexShrink: 0 }}
+            >
+              ✦
+            </button>
             <input
               type="text"
               value={newMessage}
@@ -355,8 +408,38 @@ export default function ClientPortal() {
               {uploading ? 'Uploading…' : sending ? 'Sending…' : 'Send'}
             </button>
           </form>
+          {quickActionsOpen && (
+            <div style={{ marginTop: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {[['document_request', 'Request document'], ['profile_update', 'Update profile'], ['general_query', 'Send a query']].map(([action, label]) => (
+                <button key={action} type="button" onClick={() => openAction(action)} style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '8px 10px', fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit' }}>{label}</button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
+      {activeAction && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 20, background: 'rgba(15,23,42,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }} onMouseDown={(e) => e.target === e.currentTarget && setActiveAction(null)}>
+          <form onSubmit={submitAction} style={{ width: '100%', maxWidth: '460px', background: 'var(--bg-surface)', borderRadius: '12px', padding: '24px', boxShadow: '0 20px 50px rgba(15,23,42,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+              <h2 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '17px' }}>{activeAction === 'document_request' ? 'Request a document' : activeAction === 'profile_update' ? 'Update your profile' : 'Send a general query'}</h2>
+              <button type="button" onClick={() => setActiveAction(null)} style={{ border: 'none', background: 'none', fontSize: '20px', color: 'var(--text-muted)', cursor: 'pointer' }} aria-label="Close">×</button>
+            </div>
+            {activeAction === 'document_request' && <>
+              <label style={labelStyle}>What document do you need?<input autoFocus value={actionForm.document} onChange={e => setActionForm({ ...actionForm, document: e.target.value })} style={fieldStyle} maxLength={160} /></label>
+              <label style={labelStyle}>Due by (optional)<input type="date" value={actionForm.due_date} onChange={e => setActionForm({ ...actionForm, due_date: e.target.value })} style={fieldStyle} /></label>
+            </>}
+            {activeAction === 'general_query' && <label style={labelStyle}>Your query<textarea autoFocus value={actionForm.text} onChange={e => setActionForm({ ...actionForm, text: e.target.value })} style={{ ...fieldStyle, minHeight: '100px', resize: 'vertical' }} maxLength={2000} /></label>}
+            {activeAction === 'profile_update' && <>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: '0 0 14px' }}>Changes stay pending until your CA approves them.</p>
+              {[['name', 'Name'], ['phone', 'Phone'], ['email', 'Email'], ['company', 'Company name']].map(([field, label]) => <label key={field} style={labelStyle}>{label}<input type={field === 'email' ? 'email' : 'text'} value={actionForm[field]} onChange={e => setActionForm({ ...actionForm, [field]: e.target.value })} style={fieldStyle} /></label>)}
+            </>}
+            <button type="submit" disabled={actionSubmitting} style={{ width: '100%', marginTop: '8px', border: 'none', borderRadius: '8px', padding: '11px', background: 'var(--accent)', color: 'white', fontWeight: 600, cursor: actionSubmitting ? 'not-allowed' : 'pointer', opacity: actionSubmitting ? 0.6 : 1 }}>{actionSubmitting ? 'Sending…' : 'Submit request'}</button>
+          </form>
+        </div>
+      )}
     </div>
   )
 }
+
+const labelStyle = { display: 'block', color: 'var(--text-secondary)', fontSize: '12px', fontWeight: 600, marginBottom: '12px' }
+const fieldStyle = { display: 'block', width: '100%', boxSizing: 'border-box', marginTop: '6px', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: '8px', fontFamily: 'inherit', fontSize: '14px', color: 'var(--text-primary)', background: 'var(--bg-surface)' }

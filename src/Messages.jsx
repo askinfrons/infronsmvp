@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from './supabaseClient'
 import Sidebar from './Sidebar'
 import { recordFileDownload } from './activityTracker'
+import { clearViewedPortalActions, resolveProfileUpdate } from './quickActions'
 
 export default function Messages() {
   const { id } = useParams()
@@ -48,6 +49,7 @@ export default function Messages() {
     if (!user) { navigate('/login'); return }
     await fetchClient()
     await fetchMessages()
+    clearViewedPortalActions(id)
   }
 
   const fetchClient = async () => {
@@ -84,7 +86,7 @@ export default function Messages() {
       setError('')
       let { data, error } = await supabase
         .from('messages')
-        .select('id, client_id, sender, content, file_url, file_name, is_read, delivered_at, seen_at, file_downloaded_at, created_at')
+        .select('id, client_id, sender, content, file_url, file_name, is_read, delivered_at, seen_at, file_downloaded_at, message_type, structured_payload, action_status, action_cleared_at, created_at')
         .eq('client_id', id)
         .order('created_at', { ascending: true })
       if (error?.message?.includes('column')) {
@@ -159,6 +161,19 @@ export default function Messages() {
     return { label: 'Sent', marks: 1, color: 'rgba(255,255,255,0.58)' }
   }
 
+  const handleProfileDecision = async (messageId, decision) => {
+    setError('')
+    const { error: decisionError } = await resolveProfileUpdate(messageId, decision)
+    if (decisionError) setError(decisionError.message)
+  }
+
+  const structuredDetails = (msg) => {
+    if (msg.message_type === 'document_request') return `${msg.structured_payload?.document || msg.content}${msg.structured_payload?.due_date ? ` · Due ${msg.structured_payload.due_date}` : ''}`
+    if (msg.message_type === 'profile_update') return Object.entries(msg.structured_payload || {}).filter(([, value]) => value).map(([key, value]) => `${key}: ${value}`).join(' · ')
+    if (msg.message_type === 'general_query') return msg.structured_payload?.text || msg.content
+    return msg.content
+  }
+
   if (loading) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-page)' }}>
       <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Loading...</p>
@@ -218,9 +233,22 @@ export default function Messages() {
                     padding: '12px 16px',
                     boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
                   }}>
+                    {msg.message_type && msg.message_type !== 'text' && (
+                      <div style={{ marginBottom: '8px' }}>
+                        <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: '999px', background: isCA ? 'rgba(255,255,255,0.18)' : 'rgba(99,102,241,0.1)', color: isCA ? 'white' : 'var(--accent)', fontSize: '11px', fontWeight: 700 }}>
+                          {msg.message_type === 'document_request' ? 'Document Request' : msg.message_type === 'profile_update' ? 'Profile Update Requested' : 'Query'}
+                        </span>
+                      </div>
+                    )}
                     <p style={{ fontSize: '14px', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                      {msg.content}
+                      {structuredDetails(msg)}
                     </p>
+                    {msg.message_type === 'profile_update' && msg.action_status === 'pending' && !isCA && (
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                        <button type="button" onClick={() => handleProfileDecision(msg.id, 'approved')} style={{ border: 'none', borderRadius: '7px', background: '#DCFCE7', color: '#166534', padding: '7px 10px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>Approve</button>
+                        <button type="button" onClick={() => handleProfileDecision(msg.id, 'rejected')} style={{ border: 'none', borderRadius: '7px', background: '#FEE2E2', color: '#991B1B', padding: '7px 10px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>Reject</button>
+                      </div>
+                    )}
                     {msg.file_url && (
                       <a
                         href={msg.file_url}

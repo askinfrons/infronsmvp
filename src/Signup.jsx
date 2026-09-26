@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { supabase } from './supabaseClient'
+import { CAPACITY_TIERS, DEFAULT_CAPACITY_TIER, getCapacityTier } from './capacityTiers'
 
 const STEPS = [
   { icon: '🏢', text: 'Set up your practice in under 2 minutes' },
@@ -15,6 +16,7 @@ export default function Signup() {
   const invitedName = searchParams.get('name') || ''
   const invitedEmail = searchParams.get('email') || ''
   const [practiceName, setPracticeName] = useState('')
+  const [capacityTierId, setCapacityTierId] = useState(DEFAULT_CAPACITY_TIER.id)
   const [email, setEmail] = useState(invitedEmail)
   const [password, setPassword] = useState('')
   const [fullName, setFullName] = useState(invitedName)
@@ -52,9 +54,26 @@ export default function Signup() {
           .insert([{ id: userId, practice_id: invitePracticeId, full_name: fullName, role: 'staff' }])
         if (userError) throw userError
       } else {
-        const { error: practiceError } = await supabase
+        const selectedTier = getCapacityTier(capacityTierId)
+        const practicePayload = {
+          id: userId,
+          name: practiceName,
+          email,
+          client_capacity_tier: selectedTier.id,
+          client_capacity_limit: selectedTier.limit || 0,
+        }
+
+        let { error: practiceError } = await supabase
           .from('practices')
-          .insert([{ id: userId, name: practiceName, email }])
+          .insert([practicePayload])
+
+        if (practiceError?.message?.includes('column')) {
+          const fallback = await supabase
+            .from('practices')
+            .insert([{ id: userId, name: practiceName, email }])
+          practiceError = fallback.error
+        }
+
         if (practiceError) throw practiceError
 
         const { error: userError } = await supabase
@@ -222,6 +241,29 @@ export default function Signup() {
                 />
               </div>
             ))}
+
+            {!invitePracticeId && (
+              <div>
+                <label style={{
+                  display: 'block', marginBottom: '7px', fontSize: '11.5px',
+                  fontWeight: 700, color: '#6B7280',
+                  textTransform: 'uppercase', letterSpacing: '0.07em',
+                }}>Expected client database size</label>
+                <select
+                  value={capacityTierId}
+                  onChange={(e) => setCapacityTierId(e.target.value)}
+                  style={inputStyle('capacity')}
+                  onFocus={() => setFocusedField('capacity')}
+                  onBlur={() => setFocusedField(null)}
+                >
+                  {CAPACITY_TIERS.map((tier) => (
+                    <option key={tier.id} value={tier.id}>
+                      {tier.label} - {tier.plan}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Password */}
             <div>
