@@ -25,6 +25,16 @@ export const formatRelativeTime = (value) => {
   return `${years} year${years === 1 ? '' : 's'} ago`
 }
 
+export const formatActivityTimestamp = (value) => {
+  if (!value) return 'No activity yet'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'No activity yet'
+  return date.toLocaleString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
+}
+
 export const recordPortalOpen = async (token) => {
   if (!token) return
   const { error } = await supabase.rpc('record_portal_open', { p_token: token })

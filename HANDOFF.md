@@ -28,6 +28,24 @@ Build INFRONS — a client communication web app for CA (Chartered Accountant) p
 
 ## Features Built
 
+### Verification Refresh and Client Activity Timestamp Fix - 2026-10-07
+- `src/Dashboard.jsx`
+  - Manual Verify now updates the client row immediately and then refreshes from Supabase.
+  - Document approval/rejection refreshes the review queue and client status.
+  - Client rows show a relative Last active value with an exact local timestamp on hover.
+  - Last active uses the stored client activity timestamp, portal open time, or client message time.
+- `src/ClientPortal.jsx`
+  - OTP success updates portal state immediately before the verification-state reload.
+- Added `client_activity_timestamp_fix.sql`.
+  - Ensures CA outbound messages do not incorrectly count as client activity.
+  - Backfills `clients.last_activity_at` from the latest client message or portal open.
+- Added OTP resend throttling to one request per minute.
+- Required Supabase step:
+  - Run `client_activity_timestamp_fix.sql` after `activity_tracker_setup.sql` to correct activity semantics and backfill existing timestamps.
+- Build verification:
+  - `npm.cmd run build` passed on 2026-10-07.
+  - Final Realtime propagation check after build: `npm.cmd run build` passed on 2026-10-07.
+
 ### Practice/User Data Integrity Fix - 2026-06-18
 - **Issue**: Editing practice details in Settings showed success but reverted immediately, even before refresh.
 - **Root cause (deeper than the RLS policy gap fixed on 2026-06-16)**: for the live account in question, `users.practice_id` did not equal `users.id`. RLS update policy on `practices` requires `id = auth.uid()`, so the UPDATE matched zero rows — Settings was editing a practice the account didn't actually own under that policy. This stemmed from legacy auto-creation logic across multiple sessions creating inconsistent `practice_id` values; client records had also split across two different `practice_id`s for the same user (2 clients under each), meaning half the client list was invisible on the dashboard.
@@ -292,6 +310,35 @@ Build INFRONS — a client communication web app for CA (Chartered Accountant) p
   - Run `practice_capacity_setup.sql` in the Supabase SQL editor before expecting tier values to persist.
 - Build verification:
   - `npm.cmd run build` passed.
+
+### Client Verification - 2026-10-01
+- Added `client_verification_setup.sql`.
+  - Adds per-client `verification_required`, `verification_status`, OTP timestamp, override timestamp, and rejection reason fields.
+  - Adds OTP attempt storage and a private verification-document review table with practice/staff RLS.
+  - Adds secure portal-state, document-review, and manual-override RPCs.
+  - Adds a private `client-verification-documents` storage bucket; anonymous portal uploads are handled by the token-checked server endpoint.
+- Added server endpoints:
+  - `api/send-client-otp.js` sends email OTPs through the existing server-side Resend setup.
+  - `api/verify-client-otp.js` validates six-digit codes, expiry, and five-attempt limits.
+  - `api/upload-verification-document.js` accepts a token-scoped multipart upload after OTP and stores it privately.
+- Twilio/SMS authentication was intentionally removed. The current v1 delivery channel is email; phone remains client data but is not presented as an OTP option.
+- Added `src/verification.js` for shared portal and CA verification calls.
+- `src/Dashboard.jsx`
+  - Add/Edit Client now includes a Require Verification toggle.
+  - Client rows show Unverified, OTP Verified, Fully Verified, or Rejected.
+  - Added a verification review queue with document preview, approve/reject, and rejection reason.
+  - Added a principal/staff force-verify action through the secured override RPC.
+- `src/ClientPortal.jsx`
+  - Required clients see a verification gate before chat, documents, or quick actions.
+  - OTP verification unlocks basic portal access; document approval separately promotes the client to Fully Verified.
+  - Existing non-required clients keep normal access and can optionally self-verify from a banner.
+- Required server environment:
+  - Add `SUPABASE_SERVICE_ROLE_KEY` only to Vercel/server environment variables. Never expose it through `VITE_` variables or the browser.
+- Assumptions:
+  - Email is the only OTP delivery channel in this release because SMS authentication was removed.
+  - Verification documents are limited to 15MB and manually reviewed; no OCR or authenticity automation is included.
+- Build verification:
+  - `npm.cmd run build` passed on 2026-10-01.
 
 ### Client Portal Quick Actions - 2026-09-26
 - Added `quick_actions_setup.sql`.

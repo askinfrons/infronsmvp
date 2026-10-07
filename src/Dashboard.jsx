@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from './supabaseClient'
 import Papa from 'papaparse'
-import { formatRelativeTime } from './activityTracker'
+import { formatActivityTimestamp, formatRelativeTime } from './activityTracker'
 import { getCapacityStatus } from './capacityTiers'
+import { manuallyVerifyClient, reviewVerificationDocument } from './verification'
 
 import Sidebar, { IC } from './Sidebar'
 
@@ -59,6 +60,7 @@ function ClientModal({ title, formData, setFormData, onSubmit, onCancel, submitL
             {[
               { key: 'name', label: 'Full Name', placeholder: 'Client name', required: true, type: 'text' },
               { key: 'company', label: 'Company', placeholder: 'Company name (optional)', required: false, type: 'text' },
+              { key: 'email', label: 'Email', placeholder: 'Email address (recommended for verification)', required: false, type: 'email' },
               { key: 'phone', label: 'Phone', placeholder: 'Phone number (optional)', required: false, type: 'text' },
             ].map(({ key, label, placeholder, required, type }) => (
               <div key={key}>
@@ -104,6 +106,10 @@ function ClientModal({ title, formData, setFormData, onSubmit, onCancel, submitL
                 </select>
               </div>
             )}
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '12px', background: '#F8FAFC', border: '1px solid #E5E7EB', borderRadius: '9px', cursor: 'pointer' }}>
+              <input type="checkbox" checked={!!formData.verification_required} onChange={(e) => setFormData({ ...formData, verification_required: e.target.checked })} style={{ marginTop: '2px', accentColor: '#6366f1' }} />
+              <span><strong style={{ display: 'block', fontSize: '13px', color: '#111827' }}>Require client verification</strong><span style={{ display: 'block', marginTop: '3px', color: '#6B7280', fontSize: '12px' }}>Require OTP before this client can use the portal.</span></span>
+            </label>
             <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
               <button
                 type="submit" disabled={loading}
@@ -297,7 +303,7 @@ export default function Dashboard() {
   const [error, setError] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingClient, setEditingClient] = useState(null)
-  const [formData, setFormData] = useState({ name: '', company: '', phone: '' })
+  const [formData, setFormData] = useState({ name: '', company: '', email: '', phone: '', verification_required: false })
   const [copiedId, setCopiedId] = useState(null)
   const [userEmail, setUserEmail] = useState('')
   const [filterAttention, setFilterAttention] = useState(false)
@@ -322,6 +328,8 @@ export default function Dashboard() {
   const [showUpcomingPanel, setShowUpcomingPanel] = useState(false)
   const [actionNotifications, setActionNotifications] = useState([])
   const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [verificationDocuments, setVerificationDocuments] = useState([])
+  const [verificationReviewReason, setVerificationReviewReason] = useState({})
   const navigate = useNavigate()
 
   useEffect(() => { checkAuth() }, [])
@@ -338,9 +346,12 @@ export default function Dashboard() {
   useEffect(() => {
     if (!practiceId) return
     fetchActionNotifications()
+    fetchVerificationDocuments()
     const channel = supabase
       .channel(`dashboard-quick-actions:${practiceId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => fetchActionNotifications())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'client_verification_documents', filter: `practice_id=eq.${practiceId}` }, () => { fetchVerificationDocuments(); fetchClients() })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'clients', filter: `practice_id=eq.${practiceId}` }, () => fetchClients())
       .subscribe()
     return () => supabase.removeChannel(channel)
   }, [practiceId, userRole])
@@ -354,6 +365,16 @@ export default function Dashboard() {
   const fetchActionNotifications = async () => {
     const { data, error: notificationError } = await supabase.rpc('get_pending_portal_actions')
     if (!notificationError) setActionNotifications(data || [])
+  }
+
+  const fetchVerificationDocuments = async () => {
+    const { data, error: documentError } = await supabase
+      .from('client_verification_documents')
+      .select('id, client_id, file_path, file_name, file_size, file_type, status, rejection_reason, created_at, clients(name)')
+      .eq('practice_id', practiceId)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+    if (!documentError) setVerificationDocuments(data || [])
   }
 
   const fetchClients = async ({ append = false } = {}) => {
@@ -409,7 +430,7 @@ export default function Dashboard() {
       const start = append ? clients.length : 0
       const end = start + CLIENT_PAGE_SIZE - 1
 
-      const clientColumns = 'id, practice_id, assigned_to, name, company, email, phone, portal_token, last_client_reply, follow_up_date, portal_last_opened, last_activity_at, created_at'
+      const clientColumns = 'id, practice_id, assigned_to, name, company, email, phone, portal_token, last_client_reply, follow_up_date, portal_last_opened, last_activity_at, verification_required, verification_status, otp_verified_at, verification_rejection_reason, created_at'
       const fallbackClientColumns = 'id, practice_id, assigned_to, name, company, email, phone, portal_token, last_client_reply, follow_up_date, created_at'
 
       const applyQueryRules = (queryToShape) => {
@@ -673,12 +694,12 @@ export default function Dashboard() {
     e.preventDefault()
     setSaving(true)
     const { error } = await supabase.from('clients').insert([{
-      practice_id: practiceId, ...formData, portal_token: crypto.randomUUID()
+      practice_id: practiceId, ...formData, portal_token: crypto.randomUUID(), verification_required: !!formData.verification_required, verification_status: 'unverified'
     }])
     setSaving(false)
     if (error) { setError(error.message) } else {
       setShowAddModal(false)
-      setFormData({ name: '', company: '', phone: '', assigned_to: null })
+      setFormData({ name: '', company: '', email: '', phone: '', assigned_to: null, verification_required: false })
       fetchClients()
     }
   }
@@ -690,9 +711,33 @@ export default function Dashboard() {
     setSaving(false)
     if (error) { setError(error.message) } else {
       setEditingClient(null)
-      setFormData({ name: '', company: '', phone: '', assigned_to: null })
+      setFormData({ name: '', company: '', email: '', phone: '', assigned_to: null, verification_required: false })
       fetchClients()
     }
+  }
+
+  const handleManualVerify = async (client) => {
+    if (!confirm(`Force-verify ${client.name}? This bypasses OTP and document review.`)) return
+    const { error: verifyError } = await manuallyVerifyClient(client.id)
+    if (verifyError) setError(verifyError.message)
+    else {
+      setClients(current => current.map(item => item.id === client.id ? { ...item, verification_status: 'fully_verified', verification_override_at: new Date().toISOString() } : item))
+      await fetchClients()
+    }
+  }
+
+  const handleVerificationReview = async (document, status) => {
+    const reason = verificationReviewReason[document.id] || ''
+    if (status === 'rejected' && !reason.trim()) { setError('Add a reason before rejecting a verification document.'); return }
+    const { error: reviewError } = await reviewVerificationDocument(document.id, status, reason)
+    if (reviewError) setError(reviewError.message)
+    else { setVerificationDocuments(current => current.filter(item => item.id !== document.id)); await fetchClients() }
+  }
+
+  const openVerificationDocument = async (document) => {
+    const { data, error: signedUrlError } = await supabase.storage.from('client-verification-documents').createSignedUrl(document.file_path, 300)
+    if (signedUrlError) setError(signedUrlError.message)
+    else if (data?.signedUrl) window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
   }
 
   const handleDeleteClient = async (id) => {
@@ -733,8 +778,10 @@ export default function Dashboard() {
     setFormData({
       name: client.name,
       company: client.company || '',
+      email: client.email || '',
       phone: client.phone || '',
       assigned_to: client.assigned_to || null,
+      verification_required: !!client.verification_required,
     })
   }
 
@@ -1101,6 +1148,23 @@ export default function Dashboard() {
                 </div>
               )}
 
+              {verificationDocuments.length > 0 && (
+                <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <div><p style={{ color: '#111827', fontSize: '14px', fontWeight: 700 }}>Verification review queue</p><p style={{ color: '#6B7280', fontSize: '12px', marginTop: '3px' }}>Review identity documents submitted by clients.</p></div>
+                    <span style={{ background: '#FEF3C7', color: '#92400E', borderRadius: '999px', padding: '4px 9px', fontSize: '11px', fontWeight: 700 }}>{verificationDocuments.length} pending</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {verificationDocuments.map(document => (
+                      <div key={document.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '12px', alignItems: 'center', padding: '11px 0', borderTop: '1px solid #F3F4F6' }}>
+                        <div><p style={{ color: '#111827', fontSize: '13px', fontWeight: 600 }}>{document.clients?.name || 'Client'} · {document.file_name}</p><button type="button" onClick={() => openVerificationDocument(document)} style={{ border: 'none', background: 'none', color: '#4F46E5', padding: 0, marginTop: '4px', cursor: 'pointer', fontFamily: 'inherit', fontSize: '12px' }}>Open document</button><input value={verificationReviewReason[document.id] || ''} onChange={e => setVerificationReviewReason({ ...verificationReviewReason, [document.id]: e.target.value })} placeholder="Reason required only for rejection" style={{ display: 'block', width: '100%', maxWidth: '340px', boxSizing: 'border-box', marginTop: '7px', border: '1px solid #E5E7EB', borderRadius: '7px', padding: '7px 9px', fontSize: '12px', fontFamily: 'inherit' }} /></div>
+                        <div style={{ display: 'flex', gap: '7px', flexWrap: 'wrap', justifyContent: 'flex-end' }}><button type="button" onClick={() => handleVerificationReview(document, 'approved')} style={{ border: 'none', background: '#DCFCE7', color: '#166534', borderRadius: '7px', padding: '8px 10px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>Approve</button><button type="button" onClick={() => handleVerificationReview(document, 'rejected')} style={{ border: 'none', background: '#FEE2E2', color: '#991B1B', borderRadius: '7px', padding: '8px 10px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>Reject</button></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Follow-up due banner — only when filter is off */}
               {dueFollowUps.length > 0 && !filterFollowUp && (
                 <div
@@ -1357,7 +1421,7 @@ export default function Dashboard() {
                                 {client.company}
                               </p>
                             )}
-                            <p style={{ fontSize: '11.5px', color: '#6B7280', marginTop: '3px', fontWeight: 500 }}>
+                            <p title={formatActivityTimestamp(client.last_activity_at || client.portal_last_opened || client.last_client_reply)} style={{ fontSize: '11.5px', color: '#6B7280', marginTop: '3px', fontWeight: 500 }}>
                               Last active: {formatRelativeTime(client.last_activity_at || client.portal_last_opened || client.last_client_reply)}
                             </p>
                             <button
@@ -1377,6 +1441,9 @@ export default function Dashboard() {
                                 Assigned to {getAssignedName(client.assigned_to) || 'Staff member'}
                               </p>
                             )}
+                            <p style={{ fontSize: '11.5px', color: client.verification_status === 'fully_verified' ? '#047857' : client.verification_status === 'otp_verified' ? '#2563EB' : client.verification_status === 'rejected' ? '#B91C1C' : '#92400E', marginTop: '3px', fontWeight: 600 }}>
+                              Verification: {client.verification_status === 'fully_verified' ? 'Fully Verified' : client.verification_status === 'otp_verified' ? 'OTP Verified' : client.verification_status === 'rejected' ? 'Rejected' : 'Unverified'}
+                            </p>
                           </div>
                         </div>
 
@@ -1431,6 +1498,9 @@ export default function Dashboard() {
                           <ActionBtn onClick={() => openEditModal(client)} title="Edit client">
                             <IC.Edit />
                           </ActionBtn>
+                          {client.verification_status !== 'fully_verified' && <ActionBtn onClick={() => handleManualVerify(client)} title="Force-verify client" accent>
+                            Verify
+                          </ActionBtn>}
                           <ActionBtn onClick={() => handleDeleteClient(client.id)} title="Delete client" danger>
                             <IC.Trash />
                           </ActionBtn>
@@ -1483,7 +1553,7 @@ export default function Dashboard() {
           formData={formData}
           setFormData={setFormData}
           onSubmit={handleAddClient}
-          onCancel={() => { setShowAddModal(false); setFormData({ name: '', company: '', phone: '', assigned_to: null }) }}
+          onCancel={() => { setShowAddModal(false); setFormData({ name: '', company: '', email: '', phone: '', assigned_to: null, verification_required: false }) }}
           submitLabel="Add Client"
           loading={saving}
           team={team}
@@ -1495,7 +1565,7 @@ export default function Dashboard() {
           formData={formData}
           setFormData={setFormData}
           onSubmit={handleEditClient}
-          onCancel={() => { setEditingClient(null); setFormData({ name: '', company: '', phone: '', assigned_to: null }) }}
+          onCancel={() => { setEditingClient(null); setFormData({ name: '', company: '', email: '', phone: '', assigned_to: null, verification_required: false }) }}
           submitLabel="Save Changes"
           loading={saving}
           team={team}

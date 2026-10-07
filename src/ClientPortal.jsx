@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { supabase } from './supabaseClient'
 import { markClientMessagesSeen, recordFileDownload, recordPortalOpen } from './activityTracker'
 import { submitPortalAction } from './quickActions'
+import { sendClientOtp, uploadVerificationDocument, verifyClientOtp } from './verification'
 
 export default function ClientPortal() {
   const { token } = useParams()
@@ -20,6 +21,14 @@ export default function ClientPortal() {
   const [activeAction, setActiveAction] = useState(null)
   const [actionForm, setActionForm] = useState({ document: '', due_date: '', name: '', phone: '', email: '', company: '', text: '' })
   const [actionSubmitting, setActionSubmitting] = useState(false)
+  const [otpChannel, setOtpChannel] = useState('email')
+  const [otpCode, setOtpCode] = useState('')
+  const [otpSent, setOtpSent] = useState(false)
+  const [otpSending, setOtpSending] = useState(false)
+  const [otpVerifying, setOtpVerifying] = useState(false)
+  const [verificationDocumentUploading, setVerificationDocumentUploading] = useState(false)
+  const [verificationDocumentSubmitted, setVerificationDocumentSubmitted] = useState(false)
+  const [optionalVerificationOpen, setOptionalVerificationOpen] = useState(false)
   const messagesEndRef = useRef(null)
   const fileInputRef = useRef(null)
 
@@ -43,6 +52,10 @@ export default function ClientPortal() {
           }
         }
       ).subscribe()
+    channel.on('postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'clients', filter: `id=eq.${client.id}` },
+      (payload) => setClient(current => ({ ...current, ...payload.new }))
+    )
     return () => supabase.removeChannel(channel)
   }, [client?.id])
 
@@ -52,11 +65,16 @@ export default function ClientPortal() {
   const fetchClientByToken = async () => {
     try {
       setError('')
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('clients')
-        .select('id, practice_id, name, company, email, phone, portal_token, practices(name)')
+        .select('id, practice_id, name, company, email, phone, portal_token, verification_required, verification_status, otp_verified_at, verification_rejection_reason, practices(name)')
         .eq('portal_token', token)
         .single()
+      if (error?.message?.includes('column')) {
+        const fallback = await supabase.from('clients').select('id, practice_id, name, company, email, phone, portal_token, practices(name)').eq('portal_token', token).single()
+        data = fallback.data
+        error = fallback.error
+      }
       if (error) throw error
       setClient(data)
       setPractice(data.practices)
@@ -145,6 +163,43 @@ export default function ClientPortal() {
     }
   }
 
+  const requiresVerification = (!!client?.verification_required || optionalVerificationOpen) && !client?.otp_verified_at && client?.verification_status !== 'fully_verified'
+
+  const handleSendOtp = async (e) => {
+    e?.preventDefault()
+    setError('')
+    setOtpSending(true)
+    try { await sendClientOtp(token, otpChannel); setOtpSent(true) }
+    catch (err) { setError(err.message) }
+    finally { setOtpSending(false) }
+  }
+
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault()
+    setError('')
+    setOtpVerifying(true)
+    try {
+      const result = await verifyClientOtp(token, otpChannel, otpCode)
+      setOptionalVerificationOpen(false)
+      setClient(current => ({ ...current, otp_verified_at: new Date().toISOString(), verification_status: result.fullyVerified ? 'fully_verified' : 'otp_verified' }))
+      await fetchClientByToken()
+      setOtpCode('')
+    }
+    catch (err) { setError(err.message) }
+    finally { setOtpVerifying(false) }
+  }
+
+  const handleVerificationDocument = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 15 * 1024 * 1024) { setError('Document must be under 15MB'); return }
+    setError('')
+    setVerificationDocumentUploading(true)
+    try { await uploadVerificationDocument(token, file); setVerificationDocumentSubmitted(true) }
+    catch (err) { setError(err.message) }
+    finally { setVerificationDocumentUploading(false); e.target.value = '' }
+  }
+
   const openAction = (action) => {
     setError('')
     setActionForm({
@@ -210,6 +265,27 @@ export default function ClientPortal() {
     </div>
   )
 
+  if (requiresVerification) return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-page)', padding: '20px' }}>
+      <div style={{ width: '100%', maxWidth: '440px', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '14px', padding: '30px', boxShadow: '0 12px 35px rgba(15,23,42,0.08)' }}>
+        <p style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '13px', marginBottom: '8px' }}>INFRONS verification</p>
+        <h1 style={{ color: 'var(--text-primary)', fontSize: '22px', marginBottom: '8px' }}>Verify your identity</h1>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '14px', lineHeight: 1.5, marginBottom: '22px' }}>This secure portal needs a one-time email verification before you can access messages and documents.</p>
+        {!otpSent ? <form onSubmit={handleSendOtp}>
+          <label style={labelStyle}>Verification channel<select value="email" style={fieldStyle}><option>Email {client?.email ? `(${client.email})` : '(not available)'}</option></select></label>
+          {!client?.email && <p style={{ color: 'var(--danger)', fontSize: '13px', marginBottom: '12px' }}>No email is saved for this client. Ask the practice to add one or manually verify you.</p>}
+          <button type="submit" disabled={otpSending || !client?.email} style={{ width: '100%', border: 'none', borderRadius: '8px', padding: '11px', background: 'var(--accent)', color: 'white', fontWeight: 600, cursor: otpSending || !client?.email ? 'not-allowed' : 'pointer', opacity: otpSending || !client?.email ? 0.5 : 1 }}>{otpSending ? 'Sending code…' : 'Send email code'}</button>
+        </form> : <form onSubmit={handleVerifyOtp}>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '12px' }}>Enter the six-digit code sent to your email. It expires in 10 minutes.</p>
+          <input autoFocus inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={otpCode} onChange={e => setOtpCode(e.target.value.replace(/\D/g, ''))} placeholder="000000" style={{ ...fieldStyle, fontSize: '24px', letterSpacing: '6px', textAlign: 'center', marginBottom: '12px' }} />
+          <button type="submit" disabled={otpVerifying || otpCode.length !== 6} style={{ width: '100%', border: 'none', borderRadius: '8px', padding: '11px', background: 'var(--accent)', color: 'white', fontWeight: 600, cursor: otpVerifying || otpCode.length !== 6 ? 'not-allowed' : 'pointer', opacity: otpVerifying || otpCode.length !== 6 ? 0.5 : 1 }}>{otpVerifying ? 'Checking…' : 'Verify and continue'}</button>
+          <button type="button" onClick={() => { setOtpSent(false); setOtpCode('') }} style={{ width: '100%', marginTop: '10px', border: 'none', background: 'none', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'inherit', fontSize: '13px' }}>Send a new code</button>
+        </form>}
+        {error && <p style={{ color: 'var(--danger)', fontSize: '13px', marginTop: '14px' }}>{error}</p>}
+      </div>
+    </div>
+  )
+
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-page)' }}>
       {/* Header */}
@@ -236,6 +312,22 @@ export default function ClientPortal() {
       {error && (
         <div style={{ padding: '10px 24px', background: '#FEF2F2', borderBottom: '1px solid #FECACA', flexShrink: 0 }}>
           <p style={{ color: 'var(--danger)', fontSize: '13px' }}>{error}</p>
+        </div>
+      )}
+
+      {!client?.verification_required && !client?.otp_verified_at && !optionalVerificationOpen && (
+        <div style={{ padding: '9px 24px', background: '#F8FAFC', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+          <div style={{ maxWidth: '800px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}><span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>Want an extra layer of identity protection?</span><button type="button" onClick={() => setOptionalVerificationOpen(true)} style={{ border: 'none', background: 'none', color: 'var(--accent)', fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Verify identity</button></div>
+        </div>
+      )}
+
+      {client?.otp_verified_at && client?.verification_status !== 'fully_verified' && (
+        <div style={{ padding: '12px 24px', background: client.verification_status === 'rejected' ? '#FEF2F2' : '#EFF6FF', borderBottom: `1px solid ${client.verification_status === 'rejected' ? '#FECACA' : '#BFDBFE'}`, flexShrink: 0 }}>
+          <div style={{ maxWidth: '800px', margin: '0 auto', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: '220px' }}><p style={{ color: client.verification_status === 'rejected' ? '#991B1B' : '#1E40AF', fontSize: '13px', fontWeight: 700 }}>{client.verification_status === 'rejected' ? 'Document review needs attention' : 'OTP verified'}</p><p style={{ color: client.verification_status === 'rejected' ? '#B91C1C' : '#1D4ED8', fontSize: '12px', marginTop: '3px' }}>{client.verification_status === 'rejected' ? (client.verification_rejection_reason || 'Please upload a new identity document.') : 'Upload an ID or PAN document for the CA to complete your verification.'}</p></div>
+            {!verificationDocumentSubmitted && <label style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', background: 'white', border: '1px solid #93C5FD', borderRadius: '8px', padding: '8px 11px', color: '#1D4ED8', fontSize: '12px', fontWeight: 700, cursor: verificationDocumentUploading ? 'not-allowed' : 'pointer' }}><input type="file" accept="image/*,.pdf" onChange={handleVerificationDocument} disabled={verificationDocumentUploading} style={{ display: 'none' }} />{verificationDocumentUploading ? 'Uploading…' : 'Upload ID / PAN'}</label>}
+            {verificationDocumentSubmitted && <span style={{ color: '#1D4ED8', fontSize: '12px', fontWeight: 700 }}>Document submitted for review</span>}
+          </div>
         </div>
       )}
 
