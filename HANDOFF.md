@@ -45,6 +45,7 @@ Build INFRONS — a client communication web app for CA (Chartered Accountant) p
 - Build verification:
   - `npm.cmd run build` passed on 2026-10-07.
   - Final Realtime propagation check after build: `npm.cmd run build` passed on 2026-10-07.
+  - Portal compatibility fix for verified and legacy clients: `npm.cmd run build` passed on 2026-10-07.
 
 ### Practice/User Data Integrity Fix - 2026-06-18
 - **Issue**: Editing practice details in Settings showed success but reverted immediately, even before refresh.

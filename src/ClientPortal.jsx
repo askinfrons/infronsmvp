@@ -51,11 +51,12 @@ export default function ClientPortal() {
             )))
           }
         }
-      ).subscribe()
+      )
     channel.on('postgres_changes',
       { event: 'UPDATE', schema: 'public', table: 'clients', filter: `id=eq.${client.id}` },
       (payload) => setClient(current => ({ ...current, ...payload.new }))
     )
+    channel.subscribe()
     return () => supabase.removeChannel(channel)
   }, [client?.id])
 
@@ -69,13 +70,14 @@ export default function ClientPortal() {
         .from('clients')
         .select('id, practice_id, name, company, email, phone, portal_token, verification_required, verification_status, otp_verified_at, verification_rejection_reason, practices(name)')
         .eq('portal_token', token)
-        .single()
+        .maybeSingle()
       if (error?.message?.includes('column')) {
-        const fallback = await supabase.from('clients').select('id, practice_id, name, company, email, phone, portal_token, practices(name)').eq('portal_token', token).single()
+        const fallback = await supabase.from('clients').select('id, practice_id, name, company, email, phone, portal_token, practices(name)').eq('portal_token', token).maybeSingle()
         data = fallback.data
         error = fallback.error
       }
       if (error) throw error
+      if (!data) throw new Error('Portal client not found')
       setClient(data)
       setPractice(data.practices)
       recordPortalOpen(token)
@@ -163,7 +165,8 @@ export default function ClientPortal() {
     }
   }
 
-  const requiresVerification = (!!client?.verification_required || optionalVerificationOpen) && !client?.otp_verified_at && client?.verification_status !== 'fully_verified'
+  const hasCompletedOtp = !!client?.otp_verified_at || ['otp_verified', 'fully_verified'].includes(client?.verification_status)
+  const requiresVerification = (!!client?.verification_required || optionalVerificationOpen) && !hasCompletedOtp
 
   const handleSendOtp = async (e) => {
     e?.preventDefault()
