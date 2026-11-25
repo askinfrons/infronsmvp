@@ -903,6 +903,18 @@ const getStatusColor = (lastReply) => {
 - `npm.cmd run build` passed on 2026-11-25.
 - Build reported only the existing bundle-size advisory and browser-data freshness notice.
 
+## Dashboard UX Enhancement Pass - 2026-11-25
+
+### Delivered
+- Reframed the dashboard’s first viewport with a clearer “Client work at a glance” welcome header and practice/date context.
+- Added a compact Quick Actions rail for Add client, Import CSV, Invoice Log, and Follow-ups using the existing workflows.
+- Improved action hierarchy, focus targets, button grouping, hover feedback, and responsive stacking at tablet/mobile widths.
+- Preserved all dashboard data fetching, filters, notifications, pagination, Supabase calls, realtime subscriptions, and existing routes.
+
+### Verification
+- `npm.cmd run build` passed on 2026-11-25.
+- No whitespace errors; build reported only the known bundle-size advisory, plugin timing note, and stale Browserslist data notice.
+
 ## Invoice Log and Atomic Payment Tracking - 2026-10-18
 
 ### Delivered
