@@ -28,6 +28,151 @@ Build INFRONS — a client communication web app for CA (Chartered Accountant) p
 
 ## Features Built
 
+### Client Master and Invoicing Module - 2026-10-17
+- Added `client_master_invoicing_setup.sql` as an additive migration.
+  - Adds nullable client master fields, contacts, engaged services, proforma/tax invoice tables, payments, and financial-year invoice sequences.
+  - Adds practice invoice profile fields and India April–March numbering.
+  - Adds practice-scoped RLS and atomic tax/proforma numbering RPCs.
+  - Locks issued tax invoices against editing/deletion and supports cancellation state.
+- Added `src/ClientMaster.jsx` at `/client-master`.
+  - Searchable client master with legal/trade identity, PAN/GSTIN validation, state derivation support, fees, SAC, GST rate, and CSV preview/import.
+  - Duplicate import rows are skipped when PAN or GSTIN matches an existing client.
+- Added `src/Invoicing.jsx` at `/invoices`.
+  - Single proforma/tax invoice raising, GST split preview, pure-agent reimbursement lines, payment/TDS recording, and browser print/PDF output.
+  - Tax numbering is assigned transactionally by Supabase RPC and uses India financial years.
+- Added Client Master and Invoicing navigation entries and protected routes in `src/Sidebar.jsx` and `src/App.jsx`.
+- Production note:
+  - Run `client_master_invoicing_setup.sql` in Supabase before using these screens.
+  - Production deployment and live smoke testing still require the user’s Supabase/Vercel deployment access.
+- Verification:
+  - `npm.cmd run build` passed on 2026-10-17.
+  - Final staff-practice and import path check: `npm.cmd run build` passed on 2026-10-17.
+  - `npm.cmd run lint` is currently blocked because the repository has no ESLint 9+ `eslint.config.js`; this is a pre-existing configuration gap.
+
+### Invoicing Refresh Fix - 2026-10-17
+- Fixed `src/Invoicing.jsx` so invoice data refreshes after creation and payment actions without a page reload.
+- Proformas now use the atomic `create_proforma_invoice` RPC instead of browser-side sequence writes, preventing silent RLS/sequence failures.
+- Recent documents now display both proformas and tax invoices, with proforma-to-tax conversion available inline.
+- Supabase query and RPC errors are now shown to the user instead of leaving the list blank.
+- Build verification: `npm.cmd run build` passed on 2026-10-17.
+- Deployment prerequisite: apply `client_master_invoicing_setup.sql` in the target Supabase project so the invoice RPCs and tables exist.
+
+### Invoicing SAC Code Picker - 2026-10-17
+- Added a searchable common SAC-code picker to each invoice line in `src/Invoicing.jsx`.
+- Shows the matching service description for known codes and still accepts custom SAC codes.
+- Existing `sac_code` payload and Supabase invoice schema remain unchanged.
+- Build verification: `npm.cmd run build` passed on 2026-10-17.
+
+### Proforma Conversion Lock Fix - 2026-10-17
+- Fixed `client_master_invoicing_setup.sql` so `issue_tax_invoice` calculates totals before inserting the issued invoice.
+- This prevents the issued-invoice lock trigger from rejecting the RPC's own internal totals update during proforma conversion.
+- Issued tax invoices remain locked against user edits; cancellation/credit-note behavior is unchanged.
+- Build verification: `npm.cmd run build` passed on 2026-10-17.
+- Required Supabase step: re-run the updated `client_master_invoicing_setup.sql` so the corrected RPC replaces the old function.
+
+### Client Master v2 Foundation and Client 360 - 2026-10-17
+- Added additive migration `client_master_v2_setup.sql`.
+  - Adds nullable client profile fields, tags, status, client groups, registrations, addresses, saved views, compliance due-date master/instances, document checklists, and activity logs.
+  - Adds indexes for practice/status, PAN, GSTIN, tags, compliance due dates, documents, and activity history.
+  - Enables practice/client-scoped RLS on every new table.
+  - Seeds editable standard India filing rules for GST, TDS, advance tax, ITR, and ROC.
+- Added `src/Client360.jsx` at `/client-master/:id` with Overview, Registrations, Compliance, Documents, Billing, Chat, Notes, and Activity Log tabs.
+- Added a `360` entry point beside each client in `src/ClientMaster.jsx`.
+- Existing client, chat, portal, documents, and invoicing routes remain unchanged.
+- Required Supabase step: run `client_master_v2_setup.sql` after the existing migrations.
+- Build verification: `npm.cmd run build` passed on 2026-10-17.
+
+### Client Master v2 Profile and List Enhancements - 2026-10-17
+- Extended `src/ClientMaster.jsx` with lifecycle fields, dates, source, tags, status, constitution filtering, and phone-aware search.
+- Added a visible `360` entry point beside every client while preserving the existing edit flow.
+- Existing client creation and import behavior remains compatible with the original fields.
+- Build verification: `npm.cmd run build` passed on 2026-10-17.
+
+### Client Master v2 Compliance Generation - 2026-10-17
+- Added `generate_client_compliance` to `client_master_v2_setup.sql`.
+- The RPC derives applicable filing instances from constitution, registrations, and engaged services, then safely upserts the current period.
+- Added a `Generate current period` action to the Client 360 Compliance tab.
+- Build verification: `npm.cmd run build` passed on 2026-10-17.
+
+### Client Master v2 Contacts, Addresses, and Services - 2026-10-17
+- Added Client 360 forms for multiple contact persons, multiple addresses, and engaged services.
+- Service records include fee defaults, SAC code, GST rate, and billing frequency for invoicing reuse.
+- Build verification: `npm.cmd run build` passed on 2026-10-17.
+
+### Client Master v2 Due-Date Seed Correction - 2026-10-17
+- Fixed `client_master_v2_setup.sql` where the MGT-7 seed used `due_day = 60`, violating the calendar-day constraint.
+- MGT-7 now seeds with a valid editable day of `30` and clearly notes that AGM-based timing should be adjusted by the practice.
+- Re-run the corrected migration in Supabase.
+
+### Client Master v2 End-to-End Refresh - 2026-10-17
+- Added Realtime listeners to Client Master and Client 360 for profile, registrations, contacts, addresses, services, compliance, checklists, and activity changes.
+- Dashboard now refreshes on client inserts/updates/deletes and compliance/checklist changes, while preserving the legacy-column fallback.
+- Added database activity triggers for client profile and Client Master v2 records so saved changes appear in the Activity log automatically.
+- Added the new tables to `supabase_realtime` in the additive migration with duplicate-safe publication blocks.
+- Build verification: `npm.cmd run build` passed on 2026-10-17.
+- Required Supabase step: run the corrected full `client_master_v2_setup.sql` migration so Realtime, triggers, and tables are active.
+
+### CA Dashboard UI/UX Redesign - Foundation and Client 360 Slice - 2026-10-17
+- Audited current CA-side screens and attached redesign brief.
+- Replaced the global visual tokens with a modern-ledger system: IBM Plex Sans UI, Source Serif 4 titles, ink navy, cool grey surfaces, semantic status colors, small radii, borders over shadows, tabular numerals, and visible focus states.
+- Added shared components in `src/designSystem.jsx`: Button, PageHeader, Chip, Tabs, EmptyState, Modal, and Toast.
+- Migrated Client 360 to the shared PageHeader, Tabs, and Chip components without changing routes or data behavior.
+- Removed gradient styling from the Sidebar logo and avatar and moved its active states to restrained navy/grey tokens.
+- Build verification: `npm.cmd run build` passed on 2026-10-17.
+
+### CA Dashboard UI/UX Redesign - Clients List Slice - 2026-10-17
+- Migrated the Client Master list to a dense ledger-style layout with identity, status, owner state, last activity, and focused Open/Edit actions.
+- Preserved existing search, status/constitution filters, client editing, CSV import, Realtime refresh, and Client 360 navigation.
+- Added responsive horizontal overflow for narrow screens rather than collapsing data into unreadable columns.
+- Build verification: `npm.cmd run build` passed on 2026-10-17.
+
+### CA Dashboard UI/UX Redesign - Dashboard Slice - 2026-10-17
+- Reworked the CA dashboard presentation toward a calm “Today” work view while preserving client loading, search, filters, notifications, verification review, follow-ups, capacity, import, and client actions.
+- Removed gradient/soft-card styling from dashboard stat summaries, avatars, action buttons, and decorative alert icons.
+- Replaced emoji alert markers with the existing line-icon set and applied tabular numeric styling to summary values.
+- Build verification: `npm.cmd run build` passed on 2026-10-17.
+
+### CA Dashboard UI/UX Redesign - Reference Layout Foundation - 2026-10-17
+- Read the updated reference brief and treated the screenshot as layout/interaction inspiration only; the product remains light-themed and keeps existing INFRONS behavior.
+- Added shared primitives in `src/designSystem.jsx`: `KpiChip`, `FilterTabs`, `Panel`, `DetailCard`, `ProgressRing`, and `DataTable`, alongside the existing shared components.
+- Added tokenized KPI/filter/panel/detail-card/progress-ring styles and responsive rail rules in `src/index.css`.
+- Converted the existing Sidebar into a floating icon rail through shared layout styling, with tooltips/accessible labels and a mobile bottom rail.
+- No routes, schema, data logic, realtime, RLS, or portal token flows were changed.
+- Build verification: `npm.cmd run build` passed on 2026-10-17.
+
+### CA Dashboard UI/UX Redesign - KPI Strip Slice - 2026-10-17
+- Added live top-bar KPI chips to the Dashboard for attention, due this week, awaiting reply, and pending review.
+- KPI clicks reuse the existing Dashboard filters/notification panel; no new data source or route was introduced.
+- Added responsive chip scrolling/wrapping behavior for smaller widths.
+- Build verification: `npm.cmd run build` passed on 2026-10-17.
+
+### CA Dashboard UI/UX Redesign - Client Detail Card Slice - 2026-10-17
+- Added a floating selected-client detail card to the Dashboard with status, identity facts, verification/activity widgets, urgent alert strip, Escape/outside-click close, and Client 360 deep link.
+- Existing client edit, chat, notes, documents, portal, reminder, verification, and delete actions remain available in the row actions.
+- Build verification: `npm.cmd run build` passed on 2026-10-17.
+
+### CA Dashboard UI/UX Redesign - Rail, KPI, and Detail Interaction Slice - 2026-10-17
+- Added a floating icon rail with accessible labels/tooltips and a responsive mobile bottom rail while preserving existing navigation targets.
+- Added shared KPI chip, filter tab, panel, detail card, progress ring, and data table primitives.
+- Bound live Dashboard counts to KPI chips and added a selected-client floating detail card with Escape/outside-click close and Client 360 navigation.
+- Local smoke check: login entry rendered successfully at `http://127.0.0.1:5173/login`.
+- Build verification: `npm.cmd run build` passed on 2026-10-17.
+
+### CA Dashboard UI/UX Redesign - Techy Font and Icon Rail Polish - 2026-10-17
+- Changed the CA-side UI font to Space Grotesk and numeric values to JetBrains Mono.
+- Added circular active icon states to the floating rail.
+- Added hover and keyboard-focus previews naming each icon action.
+- Preserved all existing navigation and mobile bottom-rail behavior.
+- Build verification: `npm.cmd run build` passed on 2026-10-17.
+
+### CA Dashboard UI/UX Redesign - Bold Font and Sidebar Toggle - 2026-10-17
+- Changed the interface font to bold, technical Sora; JetBrains Mono remains reserved for numeric values.
+- Sidebar is icon-only when collapsed, with hover/focus previews for every navigation item.
+- Added an accessible expand/collapse control; expanded mode reveals labels without changing navigation behavior.
+- Mobile remains a bottom icon navigation bar.
+- Build verification: `npm.cmd run build` passed on 2026-10-17.
+- Remaining migration stages: Messages, Documents, Notes, Invoicing, Settings, Team, Login/Signup, and Client Portal visual surfaces.
+
 ### Verification Refresh and Client Activity Timestamp Fix - 2026-10-07
 - `src/Dashboard.jsx`
   - Manual Verify now updates the client row immediately and then refreshes from Supabase.
@@ -733,3 +878,144 @@ const getStatusColor = (lastReply) => {
 - Auto-practice-creation handles legacy accounts gracefully
 - `src/` files are flat, not inside `src/pages/`
 - Use `npm.cmd run build` in PowerShell if `npm run build` is blocked by execution policy
+
+## CA Dashboard Finance Terminal Foundation - 2026-10-17
+
+### Delivered
+- Added a persisted light/dark theme preference under `localStorage` key `infrons-theme`.
+- Added a theme toggle to the existing sidebar without changing navigation or account actions.
+- Converted the CA rail shell toward the requested terminal proportions: flush 48px icon rail, 1px dividers, compact rows, no decorative rail shadow, and a preserved expand/collapse state.
+- Added a keyboard-accessible command line on the dashboard. `Ctrl+K` and `/` focus it; `CL`, `DUE`, `OVD`, `MSG`, `FY`, and `HELP` are recognized. Plain text continues to use the existing client search behavior.
+- Added a compact metrics ticker treatment, bottom live/IST status bar, dense workspace spacing, and dark-theme surface tokens.
+- No Supabase queries, RLS policies, routes, realtime channels, portal token handling, or existing dashboard actions were changed.
+
+### Verification
+- `npm.cmd run build` passed on 2026-10-17.
+
+## Logo Header Blending Fix - 2026-11-25
+
+### Delivered
+- Replaced the large-canvas logo source in the sidebar header with the cropped local `public/infrons-logo.png` asset.
+- Removed the oversized image positioning rules so the mark now sits naturally inside the existing header surface and no longer looks detached.
+- Preserved the sidebar layout, navigation, theme toggle, and dashboard behavior.
+
+### Verification
+- `npm.cmd run build` passed on 2026-11-25.
+- Build reported only the existing bundle-size advisory and browser-data freshness notice.
+
+## Invoice Log and Atomic Payment Tracking - 2026-10-18
+
+### Delivered
+- Added additive migration `invoice_log_setup.sql` extending the existing `invoice_payments` table with payment mode, reference, note, reversal flag/link, reversal reason, indexes, and realtime publication.
+- Added secured computed views `invoice_register` and `client_invoice_balances`; balances and statuses are derived from effective payment history, including TDS and reversals.
+- Added atomic RPCs for single payment, bulk payment, full-payment shortcut, and payment reversal. Invoice row locking prevents double-entry races and overpayment.
+- Added `src/InvoiceLog.jsx` at `/invoice-log` with dense register columns, filters, search, pagination, sorting, filtered totals, CSV export, sticky header, detail/payment history panel, payment form, bulk preview, reversal form, and keyboard shortcuts (`ArrowUp`, `ArrowDown`, `Enter`, `P`).
+- Added realtime refresh for Invoice Log, Dashboard billing pulse, Client Master balances, and Client 360 billing.
+- Updated the existing Invoicing payment form to use the atomic payment RPC without changing invoice creation or proforma flows.
+- Added dashboard receivables, collected MTD, billed MTD, and ageing buckets from `invoice_dashboard_summary`.
+- Added computed outstanding and overdue invoice values to Client Master and computed received/balance values to Client 360 Billing.
+- Added audit entries for payment and reversal actions through `client_activity_log`.
+
+### Migration and assumptions
+- Existing basic payment rows remain in `invoice_payments`; adding columns preserves them as `other`-mode, non-reversal entries.
+- `received_paise` represents cash received; `tds_paise` also reduces the invoice balance and is shown separately.
+- Proformas are visible in the register but are never payable; only issued tax invoices can reach the payment RPC.
+- The optional payment receipt PDF is not added in this pass; existing invoice print/PDF behavior remains unchanged.
+- Apply `invoice_log_setup.sql` in Supabase after the existing invoicing migration before opening `/invoice-log`.
+
+### Verification
+- `npm.cmd run build` passed on 2026-10-18.
+- `git diff --check` reported no whitespace errors; only normal Windows line-ending notices.
+- Static UI/build verification completed. Supabase concurrency, RLS isolation, reversal, and payment arithmetic require running the migration and exercising two authenticated CA accounts against the live database; they were not executable from this local workspace.
+
+## INFRONS Logo and Montserrat Brand Pass - 2026-10-18
+
+### Delivered
+- Added the supplied INFRONS logo as a local public asset at `public/infrons-logo-source.png` and replaced the sidebar wordmark with the logo crop frame.
+- Switched the shared UI and display font stack from Sora to Montserrat with heavier weights for the requested thick-letter treatment.
+- Applied the logo’s black, deep indigo, and blue-violet palette to dashboard brand tokens, active states, KPI accents, buttons, focus treatments, and dark-theme counterparts.
+- Kept the logo header readable on both light and dark themes without changing navigation or dashboard behavior.
+- No routes, Supabase calls, realtime subscriptions, RLS policies, or existing actions were changed.
+
+### Verification
+- `npm.cmd run build` passed on 2026-10-18.
+- Vite emitted only the known large-chunk advisory and plugin timing note.
+
+## Misplaced Top-Bar Accent Fix - 2026-10-17
+
+### Delivered
+- Removed the dashboard title-bar styling from the keyboard shortcut/clear-control container beside the search field.
+- Applied the title-bar class only to the actual `Today` dashboard heading, eliminating the stray blue vertical strip and white block shown in the screenshot.
+- Preserved the search field, shortcut hints, clear action, and dashboard controls.
+
+### Verification
+- `npm.cmd run build` passed on 2026-10-17.
+- Vite emitted only the existing large-chunk warning (`index-CWG0BGdF.js` ~682 kB); no build failure.
+
+### Next staged work
+- Convert the dashboard content into the full tiled home workspace: compliance calendar, filing queue, watchlist, receivables ageing, message queue, activity feed, and billing summary.
+- Apply the same terminal shell to Clients, Client 360, Invoices, Messages, Documents, Settings, Team, and auth screens.
+- Add saved resizable panel layouts and complete keyboard navigation validation across desktop and mobile breakpoints.
+
+## Static Sidebar Layout - 2026-10-17
+
+### Delivered
+- Replaced the floating, fixed, collapsible rail presentation with a stable in-flow sidebar column.
+- Sidebar labels remain visible and the width no longer changes while navigating or interacting.
+- Removed the expand/collapse control while preserving all existing navigation targets, account actions, theme toggle, and sign-out behavior.
+- Added narrow-screen stacking so the static navigation does not force horizontal overflow.
+- No route, Supabase, realtime, RLS, portal, or client action behavior changed.
+
+### Verification
+- `npm.cmd run build` passed on 2026-10-17.
+- Vite emitted only the known large-chunk warning; no build failure.
+
+## Dashboard Blue-Purple-Black Visual Enhancement - 2026-10-17
+
+### Delivered
+- Added a cohesive blue, purple, and black visual system for the CA dashboard while retaining the static sidebar layout.
+- Enhanced the dashboard title area with stronger hierarchy, blue focus rail, clearer action buttons, and tighter terminal spacing.
+- Enhanced KPI cards with compact metric treatment, purple signal accents, hover lift, and stronger numeric typography.
+- Refined the client list shell, table header, row hover state, empty states, and row action buttons for a more polished operational workspace.
+- Removed the client avatar gradient in favor of solid brand colors to keep the interface crisp and consistent.
+- Applied matching light and dark theme tokens with readable contrast.
+- No data fetching, Supabase calls, routes, realtime subscriptions, RLS behavior, or client actions were changed.
+
+### Verification
+- `npm.cmd run build` passed on 2026-10-17.
+- Vite emitted only the existing large-chunk advisory and plugin timing note.
+
+## Dashboard Contrast, Proportion, and Floating KPI Polish - 2026-10-17
+
+### Delivered
+- Made text on the black static sidebar explicitly white or blue-white for readable contrast, including account and sign-out controls.
+- Made dark dashboard surfaces explicitly use white headings and readable secondary text instead of relying on inherited colors.
+- Added responsive workspace sizing: capped ultrawide content, tighter laptop gutters, stable four-column desktop KPIs, and two-column laptop/mobile cards.
+- Enhanced KPI cards with a polished floating treatment, subtle lift, purple signal accent, and stable minimum dimensions.
+- Preserved existing dashboard data, client actions, filters, routes, Supabase calls, realtime subscriptions, and RLS behavior.
+
+### Verification
+- `npm.cmd run build` passed on 2026-10-17.
+- Vite emitted only the known large-chunk advisory; no build failure.
+
+## Dashboard Search Bar Alignment - 2026-10-17
+
+### Delivered
+- Anchored the command/search field to the left side of the dashboard top bar.
+- Added stable responsive sizing so the field remains usable on laptop and desktop widths.
+- Allowed the metrics ticker to use remaining top-bar space instead of pushing the search field out of position.
+- Preserved existing search filtering and keyboard command behavior.
+
+### Verification
+- `npm.cmd run build` passed on 2026-10-17.
+- No functional or data-layer changes were made.
+
+## Search Icon Removal and Alignment Fix - 2026-10-17
+
+### Delivered
+- Removed the dashboard search icon from the command/search input as requested.
+- Restored the dashboard title styling class to the correct page heading container; it had been attached to the old search-icon wrapper and could distort the top-bar layout.
+- Preserved the existing search filtering, command shortcuts, and responsive sizing.
+
+### Verification
+- `npm.cmd run build` passed on 2026-10-17.

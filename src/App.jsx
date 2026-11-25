@@ -9,6 +9,10 @@ import Documents from './Documents'
 import ClientPortal from './ClientPortal'
 import Team from './Team'
 import Settings from './Settings'
+import ClientMaster from './ClientMaster'
+import Client360 from './Client360'
+import Invoicing from './Invoicing'
+import InvoiceLog from './InvoiceLog'
 import { MarketingHome, InfoPage } from './PublicPages'
 import { supabase } from './supabaseClient'
 
@@ -173,6 +177,10 @@ function App() {
         <Route path="/support" element={<InfoPage type="support" />} />
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
         <Route path="/clients" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+        <Route path="/client-master" element={<ProtectedRoute><ClientMaster /></ProtectedRoute>} />
+        <Route path="/client-master/:id" element={<ProtectedRoute><Client360 /></ProtectedRoute>} />
+        <Route path="/invoices" element={<ProtectedRoute><Invoicing /></ProtectedRoute>} />
+        <Route path="/invoice-log" element={<ProtectedRoute><InvoiceLog /></ProtectedRoute>} />
         <Route path="/client/:id/messages" element={<ProtectedRoute><Messages /></ProtectedRoute>} />
         <Route path="/client/:id/notes" element={<ProtectedRoute><Notes /></ProtectedRoute>} />
         <Route path="/client/:id/documents" element={<ProtectedRoute><Documents /></ProtectedRoute>} />

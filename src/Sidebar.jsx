@@ -94,6 +94,16 @@ export const IC = {
       <polyline points="6 9 12 15 18 9"/>
     </svg>
   ),
+  Sun: () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42"/>
+    </svg>
+  ),
+  Moon: () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+    </svg>
+  ),
   TrendUp: () => (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
@@ -119,6 +129,10 @@ function NavItem({ icon, label, active, onClick }) {
   const [hovered, setHovered] = useState(false)
   return (
     <div
+      className={`ca-rail-item${active ? ' ca-rail-item-active' : ''}`}
+      data-label={label}
+      title={label}
+      aria-label={label}
       role="button"
       tabIndex={0}
       onClick={onClick}
@@ -127,9 +141,9 @@ function NavItem({ icon, label, active, onClick }) {
       onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex', alignItems: 'center', gap: '9px',
-        padding: '7px 12px', borderRadius: '8px', cursor: 'pointer',
-        color: active ? '#4f46e5' : hovered ? '#111827' : '#6B7280',
-        background: active ? '#eef2ff' : hovered ? '#f5f5fb' : 'transparent',
+        padding: '7px 10px', borderRadius: '4px', cursor: 'pointer',
+        color: active ? 'var(--sidebar-active-text)' : hovered ? 'var(--text-primary)' : 'var(--sidebar-text)',
+        background: active ? 'var(--sidebar-active-bg)' : hovered ? 'var(--sidebar-hover-bg)' : 'transparent',
         fontSize: '13.5px', fontWeight: active ? 600 : 400,
         transition: 'all 150ms ease', marginBottom: '1px',
         position: 'relative', userSelect: 'none', outline: 'none',
@@ -138,11 +152,11 @@ function NavItem({ icon, label, active, onClick }) {
       {active && (
         <span style={{
           position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
-          width: '3px', height: '18px', background: '#6366f1',
+          width: '3px', height: '18px', background: 'var(--accent)',
           borderRadius: '0 3px 3px 0',
         }} />
       )}
-      <span style={{ display: 'flex', color: active ? '#6366f1' : hovered ? '#374151' : '#9CA3AF' }}>{icon}</span>
+      <span style={{ display: 'flex', color: active ? 'var(--accent)' : hovered ? 'var(--text-primary)' : 'var(--text-muted)' }}>{icon}</span>
       {label}
     </div>
   )
@@ -152,7 +166,7 @@ function SidebarSection({ label }) {
   return (
     <div style={{
       fontSize: '10px', fontWeight: 700, letterSpacing: '0.1em',
-      textTransform: 'uppercase', color: '#9CA3AF',
+      textTransform: 'uppercase', color: 'var(--sidebar-section)',
       padding: '16px 12px 5px',
     }}>
       {label}
@@ -164,23 +178,31 @@ export default function Sidebar({ client }) {
   const navigate = useNavigate()
   const location = useLocation()
   const [userEmail, setUserEmail] = useState('')
+  const [darkTheme, setDarkTheme] = useState(() => window.localStorage.getItem('infrons-theme') === 'dark')
 
   useEffect(() => {
+    document.body.classList.toggle('ca-theme-dark', darkTheme)
+    document.body.classList.toggle('ca-theme-light', !darkTheme)
+    window.localStorage.setItem('infrons-theme', darkTheme ? 'dark' : 'light')
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) setUserEmail(user.email || '')
     })
-  }, [])
+    return () => {
+      document.body.classList.remove('ca-theme-dark')
+      document.body.classList.remove('ca-theme-light')
+    }
+  }, [darkTheme])
 
   const userInitial = userEmail ? userEmail.charAt(0).toUpperCase() : 'U'
   const userHandle = userEmail ? userEmail.split('@')[0] : 'Account'
 
   return (
-    <aside style={{
+    <aside className="ca-static-sidebar" style={{
       width: '240px', flexShrink: 0,
-      background: '#FFFFFF',
+      background: 'var(--sidebar-bg)',
       display: 'flex', flexDirection: 'column',
       position: 'fixed', top: 0, left: 0, height: '100vh',
-      zIndex: 40, borderRight: '1px solid #e5e7eb',
+      zIndex: 40, borderRight: '1px solid var(--sidebar-border)',
     }}>
       {/* Logo */}
       <div style={{
@@ -188,16 +210,9 @@ export default function Sidebar({ client }) {
         display: 'flex', alignItems: 'center', gap: '8px',
         borderBottom: '1px solid #f3f4f6', flexShrink: 0,
       }}>
-        {/* wordmark matching logo: "infrons." with gradient dot */}
-        <span style={{
-          fontSize: '17px', fontWeight: 800, letterSpacing: '-0.04em',
-          background: 'linear-gradient(90deg, #0f0f1a 0%, #6366f1 100%)',
-          WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-          backgroundClip: 'text',
-        }}>
-          infrons
+        <span className="ca-logo-crop" aria-label="INFRONS">
+          <img src="/infrons-logo.png" alt="INFRONS" />
         </span>
-        <span style={{ fontSize: '17px', fontWeight: 800, color: '#6366f1', lineHeight: 1, marginTop: '1px' }}>.</span>
       </div>
 
       {/* Navigation */}
@@ -208,6 +223,24 @@ export default function Sidebar({ client }) {
           label="Clients"
           active={location.pathname === '/dashboard' || location.pathname === '/clients'}
           onClick={() => navigate('/clients')}
+        />
+        <NavItem
+          icon={<IC.FileText />}
+          label="Client Master"
+          active={location.pathname === '/client-master'}
+          onClick={() => navigate('/client-master')}
+        />
+        <NavItem
+          icon={<IC.FileText />}
+          label="Invoicing"
+          active={location.pathname.startsWith('/invoices')}
+          onClick={() => navigate('/invoices')}
+        />
+        <NavItem
+          icon={<IC.TrendUp />}
+          label="Invoice Log"
+          active={location.pathname.startsWith('/invoice-log')}
+          onClick={() => navigate('/invoice-log')}
         />
 
         {client && (
@@ -257,11 +290,11 @@ export default function Sidebar({ client }) {
         }}>
           <div style={{
             width: '30px', height: '30px', borderRadius: '8px', flexShrink: 0,
-            background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
+            background: '#dce7f0',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 2px 6px rgba(99,102,241,0.35)',
+            border: '1px solid #c2d1de',
           }}>
-            <span style={{ color: 'white', fontSize: '12px', fontWeight: 700 }}>{userInitial}</span>
+            <span style={{ color: 'var(--brand-navy)', fontSize: '12px', fontWeight: 700 }}>{userInitial}</span>
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{
@@ -274,6 +307,16 @@ export default function Sidebar({ client }) {
             }}>{userEmail}</p>
           </div>
         </div>
+
+        <button
+          onClick={() => setDarkTheme(value => !value)}
+          className="ca-theme-toggle"
+          aria-label={darkTheme ? 'Use light theme' : 'Use dark theme'}
+          title={darkTheme ? 'Use light theme' : 'Use dark theme'}
+        >
+          {darkTheme ? <IC.Sun /> : <IC.Moon />}
+          <span>{darkTheme ? 'Light theme' : 'Dark theme'}</span>
+        </button>
 
         <button
           onClick={async () => { await supabase.auth.signOut(); navigate('/login') }}
