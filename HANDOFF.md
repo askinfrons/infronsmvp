@@ -1043,3 +1043,13 @@ const getStatusColor = (lastReply) => {
 ### Verification
 - `npm.cmd run build` passed on 2026-11-25.
 - Vite emitted only the existing Browserslist, plugin timing, and large-chunk advisories.
+
+## Dashboard Viewport Frame Adjustment - 2026-11-25
+
+### Delivered
+- Adjusted the dashboard work surface to use the available laptop and desktop viewport instead of staying constrained to the earlier narrow frame.
+- Added a 1600px desktop cap, balanced content gutters, a laptop-specific 1180px cap, and compact tablet/mobile spacing.
+- Preserved the static sidebar, dashboard hierarchy, responsive client list, and all existing data and interaction behavior.
+
+### Verification
+- `npm.cmd run build` passed on 2026-11-25.

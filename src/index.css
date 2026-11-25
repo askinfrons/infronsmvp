@@ -572,6 +572,32 @@ body.ca-theme-dark .ca-static-sidebar > div:first-child { background: #ffffff !i
   }
 }
 
+/* Fit the work surface to common laptop and desktop viewport dimensions. */
+.ca-terminal-workspace {
+  min-width: 0 !important;
+  padding: 24px 28px 48px !important;
+}
+.ca-terminal-workspace > div {
+  width: 100% !important;
+  max-width: 1600px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+@media (max-width: 1280px) {
+  .ca-terminal-workspace { padding-left: 20px !important; padding-right: 20px !important; }
+  .ca-terminal-workspace > div { max-width: 1180px !important; }
+}
+
+@media (max-width: 900px) {
+  .ca-terminal-workspace { padding-left: 16px !important; padding-right: 16px !important; }
+}
+
+@media (max-width: 700px) {
+  .ca-terminal-workspace { padding: 14px 10px 66px !important; }
+  .ca-terminal-workspace > div { max-width: none !important; }
+}
+
 /* Invoice Log workspace */
 .invoice-log-page { display: flex; min-height: 100vh; background: var(--bg-page); color: var(--text-primary); }
 .invoice-log-main { flex: 1; min-width: 0; padding: 24px; }
