@@ -1067,8 +1067,7 @@ export default function Dashboard() {
                 alignItems: 'flex-start', marginBottom: '28px',
               }}>
                 <div className="ca-dashboard-welcome">
-                  <p className="ca-eyebrow">{cachedPracticeName} · {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
-                  <h1 className="ca-page-title" style={{ marginBottom: '4px' }}>Client work at a glance</h1>
+                  <h1 className="ca-page-title" style={{ marginBottom: '4px' }}>Today</h1>
                   <p style={{ fontSize: '13.5px', color: '#6B7280' }}>
                     Your client work, ordered by what needs attention first.
                   </p>
@@ -1227,16 +1226,6 @@ export default function Dashboard() {
                   )}
                 </div>
               )}
-
-              <section className="ca-dashboard-quick-actions" aria-label="Quick actions">
-                <div className="ca-dashboard-quick-heading"><span className="ca-dashboard-quick-kicker">Quick actions</span><span className="ca-dashboard-quick-hint">Common tasks, one click away</span></div>
-                <div className="ca-dashboard-quick-grid">
-                  <button type="button" onClick={() => setShowAddModal(true)}><span className="ca-dashboard-quick-icon"><IC.Plus /></span><span><strong>Add client</strong><small>Create a client profile</small></span><span className="ca-dashboard-quick-arrow">→</span></button>
-                  <button type="button" onClick={() => { resetImportState(); setShowImportModal(true) }}><span className="ca-dashboard-quick-icon"><IC.FileText /></span><span><strong>Import CSV</strong><small>Bring in your client list</small></span><span className="ca-dashboard-quick-arrow">→</span></button>
-                  <button type="button" onClick={() => navigate('/invoice-log')}><span className="ca-dashboard-quick-icon"><IC.TrendUp /></span><span><strong>Invoice log</strong><small>Review collections</small></span><span className="ca-dashboard-quick-arrow">→</span></button>
-                  <button type="button" onClick={() => { setFilterFollowUp(true); setFilterAttention(false) }}><span className="ca-dashboard-quick-icon"><IC.Calendar /></span><span><strong>Follow-ups</strong><small>{dueFollowUps.length + upcomingFollowUps.length} scheduled</small></span><span className="ca-dashboard-quick-arrow">→</span></button>
-                </div>
-              </section>
 
               {verificationDocuments.length > 0 && (
                 <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>

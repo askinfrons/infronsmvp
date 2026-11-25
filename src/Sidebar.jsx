@@ -211,7 +211,7 @@ export default function Sidebar({ client }) {
         borderBottom: '1px solid #f3f4f6', flexShrink: 0,
       }}>
         <span className="ca-logo-crop" aria-label="INFRONS">
-          <img src="/infrons-logo.png" alt="INFRONS" />
+          <img src="/infrons-logo-sidebar.png" alt="INFRONS" />
         </span>
       </div>
 

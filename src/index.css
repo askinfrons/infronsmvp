@@ -525,6 +525,53 @@ body.ca-theme-dark {
 body.ca-theme-dark .ca-logo-crop { background: #ffffff; }
 body.ca-theme-dark .ca-static-sidebar > div:first-child { background: #ffffff !important; }
 
+/* Reference dashboard layout: fixed dark rail, open work queue, and blended brand mark. */
+.ca-static-sidebar {
+  width: 296px !important;
+  min-width: 296px !important;
+  background: #080b14 !important;
+  border-right: 1px solid #20263a !important;
+}
+.ca-static-sidebar > div:first-child {
+  height: 54px !important;
+  padding: 0 20px !important;
+  background: #080b14 !important;
+  border-bottom-color: #20263a !important;
+}
+.ca-logo-crop {
+  width: 112px !important;
+  height: 32px !important;
+  flex-basis: 112px !important;
+}
+.ca-logo-crop img {
+  width: 102px !important;
+  max-width: 102px !important;
+}
+.ca-dashboard-titlebar {
+  align-items: flex-start !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  overflow: visible !important;
+}
+.ca-dashboard-titlebar::before { display: none !important; }
+.ca-dashboard-welcome .ca-eyebrow { display: none !important; }
+.ca-dashboard-welcome h1 {
+  font-size: 30px !important;
+  line-height: 1.15 !important;
+  letter-spacing: 0 !important;
+}
+.ca-dashboard-quick-actions { display: none !important; }
+
+@media (max-width: 700px) {
+  .ca-static-sidebar {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+}
+
 /* Invoice Log workspace */
 .invoice-log-page { display: flex; min-height: 100vh; background: var(--bg-page); color: var(--text-primary); }
 .invoice-log-main { flex: 1; min-width: 0; padding: 24px; }

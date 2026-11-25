@@ -1031,3 +1031,15 @@ const getStatusColor = (lastReply) => {
 
 ### Verification
 - `npm.cmd run build` passed on 2026-10-17.
+
+## Dashboard Reference Layout Replication - 2026-11-25
+
+### Delivered
+- Reworked the CA dashboard presentation to closely match the supplied reference: fixed dark sidebar, compact top work bar, `Today` heading, right-aligned work actions, capacity and follow-up banners, KPI cards, and dense client register.
+- Removed the newer dashboard quick-action strip and framed title treatment that made the first viewport diverge from the reference.
+- Added a transparent sidebar logo variant using the supplied INFRONS mark, with the dark wordmark converted to white while preserving the blue/indigo brand accent so it blends into the sidebar.
+- Kept existing dashboard data loading, filtering, pagination, client actions, invoice summaries, verification review, routes, realtime subscriptions, and Supabase behavior unchanged.
+
+### Verification
+- `npm.cmd run build` passed on 2026-11-25.
+- Vite emitted only the existing Browserslist, plugin timing, and large-chunk advisories.
