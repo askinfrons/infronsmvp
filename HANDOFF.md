@@ -1053,3 +1053,16 @@ const getStatusColor = (lastReply) => {
 
 ### Verification
 - `npm.cmd run build` passed on 2026-11-25.
+
+## GST Invoice Templates and Custom Print Format - 2026-11-26
+
+### Delivered
+- Replaced the minimal invoice printout with a print-ready A4 invoice renderer built around the current invoice data and numbering flow.
+- Added a `GST Standard` pre-built template with supplier and recipient blocks, GSTIN, state/place of supply, invoice and due dates, SAC, line-item values, CGST/SGST/IGST breakup, total, amount in words, reverse-charge declaration, terms, and authorised-signatory space.
+- Added a second `Professional` pre-built layout for a more compact client-facing presentation.
+- Added `Custom format` controls for accent colour, footer text, and payment terms without changing the underlying invoice record or Supabase RPCs.
+- Reused practice and client profile data for the supplier/recipient sections and preserved existing tax invoice, proforma, conversion, payment, recent-document, and print actions.
+
+### Verification
+- `npm.cmd run build` passed on 2026-11-26.
+- Vite emitted only the existing Browserslist, plugin timing, and large-chunk advisories.
